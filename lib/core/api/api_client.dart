@@ -50,4 +50,36 @@ class ApiClient {
         .timeout(const Duration(seconds: 5));
     return HealthResponse.fromJson(jsonDecode(body) as Map<String, dynamic>);
   }
+
+  Future<Map<String, dynamic>> postImage(
+    String filename,
+    List<int> bytes, {
+    Duration timeout = const Duration(minutes: 2),
+  }) async {
+    final uri = _baseUrl.resolve('/api/v1/pages/analyze');
+    final boundary = 'manga-${DateTime.now().microsecondsSinceEpoch}';
+    final safeName = filename.replaceAll(RegExp(r'[\r\n"\\]'), '_');
+    final request = await _httpClient.postUrl(uri).timeout(timeout);
+    request.headers.contentType = ContentType(
+      'multipart',
+      'form-data',
+      parameters: {'boundary': boundary},
+    );
+    request.add(
+      utf8.encode(
+        '--$boundary\r\nContent-Disposition: form-data; name="image"; filename="$safeName"\r\nContent-Type: application/octet-stream\r\n\r\n',
+      ),
+    );
+    request.add(bytes);
+    request.add(utf8.encode('\r\n--$boundary--\r\n'));
+    final response = await request.close().timeout(timeout);
+    final body = await utf8.decoder.bind(response).join().timeout(timeout);
+    if (response.statusCode != HttpStatus.ok) {
+      throw HttpException(
+        'Detection failed (${response.statusCode}): $body',
+        uri: uri,
+      );
+    }
+    return jsonDecode(body) as Map<String, dynamic>;
+  }
 }

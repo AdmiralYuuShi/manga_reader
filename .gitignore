@@ -6,3 +6,6 @@ backend/.venv/
 build/
 .idea/
 *.iml
+backend/models/
+backend/vendor/
+backend/.pytest_cache/

@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -11,5 +11,8 @@ class HealthResponse(BaseModel):
 
 
 @router.get("/health", response_model=HealthResponse)
-def health() -> HealthResponse:
-    return HealthResponse(status="ok", detector_ready=False, ocr_ready=False)
+def health(request: Request) -> HealthResponse:
+    return HealthResponse(
+        status="ok", detector_ready=getattr(request.app.state, "detector", None) is not None,
+        ocr_ready=False,
+    )
