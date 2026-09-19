@@ -34,7 +34,10 @@ void main() {
     );
     await tester.tap(find.text('Analyze Page'));
     await tester.pump();
-    expect(find.text('Detecting and recognizing text...'), findsOneWidget);
+    expect(
+      find.text('Detecting, recognizing, and translating text...'),
+      findsOneWidget,
+    );
     pending.complete(
       const PageAnalysis(
         width: 1,
@@ -47,6 +50,8 @@ void main() {
             width: 1,
             height: 1,
             sourceLanguage: 'ja',
+            targetLanguage: 'id',
+            translatedText: 'Hari ini pergi ke sekolah?',
             sourceText: '今日は学校に行くの？',
           ),
         ],
@@ -58,6 +63,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('region_001')));
     await tester.pump();
     expect(find.text('Selected Region: region_001'), findsOneWidget);
+    expect(find.text('Indonesian:'), findsOneWidget);
+    expect(find.text('Hari ini pergi ke sekolah?'), findsOneWidget);
     expect(find.text('今日は学校に行くの？'), findsOneWidget);
   });
 

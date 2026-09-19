@@ -54,6 +54,8 @@ class ApiClient {
   Future<Map<String, dynamic>> postImage(
     String filename,
     List<int> bytes, {
+    bool translate = true,
+    String targetLanguage = 'id',
     Duration timeout = const Duration(
       seconds: int.fromEnvironment(
         'ANALYSIS_TIMEOUT_SECONDS',
@@ -64,6 +66,7 @@ class ApiClient {
     final uri = _baseUrl.resolve('/api/v1/pages/analyze');
     final boundary = 'manga-${DateTime.now().microsecondsSinceEpoch}';
     final safeName = filename.replaceAll(RegExp(r'[\r\n"\\]'), '_');
+    final safeLanguage = targetLanguage.replaceAll(RegExp(r'[\r\n"\\]'), '');
     final request = await _httpClient.postUrl(uri).timeout(timeout);
     request.headers.contentType = ContentType(
       'multipart',
@@ -76,7 +79,13 @@ class ApiClient {
       ),
     );
     request.add(bytes);
-    request.add(utf8.encode('\r\n--$boundary--\r\n'));
+    request.add(
+      utf8.encode(
+        '\r\n--$boundary\r\nContent-Disposition: form-data; name="translate"\r\n\r\n${translate ? 'true' : 'false'}'
+        '\r\n--$boundary\r\nContent-Disposition: form-data; name="target_language"\r\n\r\n$safeLanguage'
+        '\r\n--$boundary--\r\n',
+      ),
+    );
     final response = await request.close().timeout(timeout);
     final body = await utf8.decoder.bind(response).join().timeout(timeout);
     if (response.statusCode != HttpStatus.ok) {

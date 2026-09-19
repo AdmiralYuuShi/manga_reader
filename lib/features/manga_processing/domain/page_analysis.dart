@@ -8,6 +8,9 @@ class DetectedRegion {
     this.sourceLanguage,
     this.sourceText,
     this.errorCode,
+    this.targetLanguage,
+    this.translatedText,
+    this.translationErrorCode,
   });
 
   final String id;
@@ -18,6 +21,9 @@ class DetectedRegion {
   final String? sourceLanguage;
   final String? sourceText;
   final String? errorCode;
+  final String? targetLanguage;
+  final String? translatedText;
+  final String? translationErrorCode;
 }
 
 class PageAnalysis {

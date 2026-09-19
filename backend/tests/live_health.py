@@ -60,7 +60,10 @@ if __name__ == "__main__":
         assert analysis["page"] == {"width": expected_size[0], "height": expected_size[1]}
         assert isinstance(analysis["regions"], list)
         nonempty = sum(bool(region.get("source_text")) for region in analysis["regions"])
+        translated = sum(bool(region.get("translated_text")) for region in analysis["regions"])
+        translation_errors = sum(bool(region.get("translation_error")) for region in analysis["regions"])
         print(f"HTTP inference: {len(analysis['regions'])} regions, {nonempty} non-empty OCR; "
+              f"{translated} translated, {translation_errors} translation errors; "
               f"timings: {analysis['processing']}")
     finally:
         process.terminate()

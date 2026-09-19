@@ -2,7 +2,7 @@ import io
 import logging
 from time import perf_counter
 
-from fastapi import APIRouter, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from PIL import Image, ImageOps, UnidentifiedImageError
 from pydantic import BaseModel
 
@@ -32,6 +32,9 @@ class RegionResponse(BaseModel):
     source_language: str = "ja"
     source_text: str | None
     error: RegionErrorResponse | None = None
+    target_language: str | None = None
+    translated_text: str | None = None
+    translation_error: RegionErrorResponse | None = None
 
 
 class PageResponse(BaseModel):
@@ -42,6 +45,7 @@ class PageResponse(BaseModel):
 class ProcessingResponse(BaseModel):
     detection_ms: int
     ocr_ms: int
+    translation_ms: int
     total_ms: int
 
 
@@ -67,7 +71,8 @@ def decode_image(data: bytes) -> Image.Image:
 
 
 @router.post("/pages/analyze", response_model=AnalysisResponse)
-async def analyze_page(request: Request, image: UploadFile = File(...)) -> AnalysisResponse:
+async def analyze_page(request: Request, image: UploadFile = File(...),
+                       translate: bool = Form(True), target_language: str = Form("id")) -> AnalysisResponse:
     start = perf_counter()
     if image.content_type not in {"image/jpeg", "image/png", "image/webp", "application/octet-stream"}:
         raise HTTPException(415, "Supported formats: JPEG, PNG, WEBP")
@@ -80,9 +85,10 @@ async def analyze_page(request: Request, image: UploadFile = File(...)) -> Analy
     if ocr is None:
         raise HTTPException(503, "Manga OCR is not ready")
     processor = MangaProcessor(detector, ocr, request.app.state.detector_lock,
-                               request.app.state.ocr_lock)
+                               request.app.state.ocr_lock, request.app.state.translator)
     try:
-        result = await processor.process(source)
+        result = await processor.process(source, translate=translate,
+                                         target_language=target_language)
     except DetectionFailed as exc:
         logger.exception("Text detection failed")
         raise HTTPException(500, "Text detection failed") from exc
@@ -92,8 +98,13 @@ async def analyze_page(request: Request, image: UploadFile = File(...)) -> Analy
         regions=[RegionResponse(id=region.id, bbox=BoxResponse(**vars(region.bbox)),
                                 source_text=region.source_text,
                                 error=(RegionErrorResponse(code=region.error_code)
-                                       if region.error_code else None))
+                                       if region.error_code else None),
+                                target_language=target_language if translate else None,
+                                translated_text=region.translated_text,
+                                translation_error=(RegionErrorResponse(code=region.translation_error_code)
+                                                   if region.translation_error_code else None))
                  for region in result.regions],
         processing=ProcessingResponse(detection_ms=result.detection_ms,
-                                      ocr_ms=result.ocr_ms, total_ms=total_ms),
+                                      ocr_ms=result.ocr_ms,
+                                      translation_ms=result.translation_ms, total_ms=total_ms),
     )

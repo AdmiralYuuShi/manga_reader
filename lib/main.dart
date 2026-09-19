@@ -124,7 +124,7 @@ class _HomePageState extends State<HomePage> {
                 if (_controller.status == ProcessingStatus.processing)
                   const LinearProgressIndicator(),
                 if (_controller.status == ProcessingStatus.processing)
-                  const Text('Detecting and recognizing text...'),
+                  const Text('Detecting, recognizing, and translating text...'),
                 if (_controller.status == ProcessingStatus.failure)
                   Text(
                     'Detection failed: ${_controller.error}',
@@ -188,6 +188,19 @@ class _HomePageState extends State<HomePage> {
                               : region.sourceText?.isNotEmpty == true
                               ? region.sourceText!
                               : 'No text recognized',
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          region.targetLanguage == 'id'
+                              ? 'Indonesian:'
+                              : 'Translation (${region.targetLanguage ?? 'id'}):',
+                        ),
+                        Text(
+                          region.translationErrorCode != null
+                              ? 'Translation failed for this region (${region.translationErrorCode})'
+                              : region.translatedText?.isNotEmpty == true
+                              ? region.translatedText!
+                              : 'No translation available',
                         ),
                       ],
                     ),

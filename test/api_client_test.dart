@@ -44,6 +44,8 @@ void main() {
       );
       expect(latin1.decode(body), contains('filename="page.png"'));
       expect(latin1.decode(body), contains('PNGDATA'));
+      expect(latin1.decode(body), contains('name="translate"\r\n\r\ntrue'));
+      expect(latin1.decode(body), contains('name="target_language"\r\n\r\nid'));
       request.response.headers.contentType = ContentType.json;
       request.response.write(
         jsonEncode({

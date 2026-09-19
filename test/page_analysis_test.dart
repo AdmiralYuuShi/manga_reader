@@ -15,6 +15,9 @@ void main() {
           'source_language': 'ja',
           'source_text': '今日は学校に行くの？',
           'error': null,
+          'target_language': 'id',
+          'translated_text': 'Hari ini pergi ke sekolah?',
+          'translation_error': null,
         },
       ],
       'processing': {'detection_ms': 10, 'total_ms': 11},
@@ -23,6 +26,8 @@ void main() {
     expect(result.regions.single.height, 400);
     expect(result.regions.single.sourceText, '今日は学校に行くの？');
     expect(result.regions.single.sourceLanguage, 'ja');
+    expect(result.regions.single.targetLanguage, 'id');
+    expect(result.regions.single.translatedText, 'Hari ini pergi ke sekolah?');
   });
 
   test('maps original pixels through BoxFit.contain letterboxing', () {
@@ -54,10 +59,12 @@ void main() {
           'source_language': 'ja',
           'source_text': null,
           'error': {'code': 'OCR_FAILED'},
+          'translation_error': {'code': 'TRANSLATION_FAILED'},
         },
       ],
     });
     expect(result.regions.single.sourceText, isNull);
     expect(result.regions.single.errorCode, 'OCR_FAILED');
+    expect(result.regions.single.translationErrorCode, 'TRANSLATION_FAILED');
   });
 }

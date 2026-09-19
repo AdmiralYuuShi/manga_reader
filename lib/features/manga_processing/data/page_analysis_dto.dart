@@ -19,6 +19,11 @@ PageAnalysis parsePageAnalysis(Map<String, dynamic> json) {
         sourceText: region['source_text'] as String?,
         errorCode:
             (region['error'] as Map<String, dynamic>?)?['code'] as String?,
+        targetLanguage: region['target_language'] as String?,
+        translatedText: region['translated_text'] as String?,
+        translationErrorCode:
+            (region['translation_error'] as Map<String, dynamic>?)?['code']
+                as String?,
       );
     }).toList(),
   );

@@ -10,6 +10,7 @@ from app.config import get_settings
 from app.logging_config import configure_logging
 from app.services.detection.comic_text_detector import ComicTextDetector
 from app.services.ocr.manga_ocr import MangaOcrEngine
+from app.services.translation.factory import create_translator
 
 settings = get_settings()
 configure_logging(settings.log_level)
@@ -22,6 +23,7 @@ async def lifespan(app: FastAPI):
     app.state.detector_lock = asyncio.Lock()
     app.state.ocr = None
     app.state.ocr_lock = asyncio.Lock()
+    app.state.translator = create_translator(settings)
     try:
         app.state.detector = ComicTextDetector(settings.detector_source, settings.detector_model)
     except Exception:
