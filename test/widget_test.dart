@@ -8,6 +8,7 @@ import 'package:manga_translator/core/api/api_client.dart';
 import 'package:manga_translator/features/manga_processing/data/processing_repository.dart';
 import 'package:manga_translator/features/manga_processing/domain/page_analysis.dart';
 import 'package:manga_translator/features/manga_processing/presentation/processing_controller.dart';
+import 'package:manga_translator/features/manga_processing/presentation/translation_region_overlay.dart';
 import 'package:manga_translator/main.dart';
 
 class FakeRepository extends ProcessingRepository {
@@ -59,14 +60,102 @@ void main() {
     );
     await tester.pump();
     expect(find.byKey(const ValueKey('region_001')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('translation-text-region_001')),
+      findsOneWidget,
+    );
     expect(find.text('1 regions detected'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('region_001')));
     await tester.pump();
     expect(find.text('Selected Region: region_001'), findsOneWidget);
     expect(find.text('Indonesian:'), findsOneWidget);
-    expect(find.text('Hari ini pergi ke sekolah?'), findsOneWidget);
+    expect(find.text('Hari ini pergi ke sekolah?'), findsNWidgets(2));
     expect(find.text('今日は学校に行くの？'), findsOneWidget);
   });
+
+  testWidgets(
+    'overlay controls preserve selection and image changes clear overlays',
+    (tester) async {
+      final controller = ProcessingController(
+        FakeRepository(
+          Future.value(
+            const PageAnalysis(
+              width: 1,
+              height: 1,
+              regions: [
+                DetectedRegion(
+                  id: 'region_001',
+                  x: 0,
+                  y: 0,
+                  width: 1,
+                  height: 1,
+                  sourceText: 'Japanese',
+                  translatedText: 'Indonesian',
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      controller.selectImage('page.png', Uint8List.fromList(image));
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(controller: controller)),
+      );
+      await tester.tap(find.text('Analyze Page'));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('region_001')));
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('translation-text-region_001')),
+        findsOneWidget,
+      );
+      await tester.tap(find.byType(Switch).first);
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('translation-text-region_001')),
+        findsNothing,
+      );
+      expect(controller.selectedRegionId, 'region_001');
+      expect(
+        tester
+            .widget<TranslationRegionOverlay>(
+              find.byType(TranslationRegionOverlay),
+            )
+            .showDetectionBox,
+        isTrue,
+      );
+      await tester.ensureVisible(find.byType(Switch).last);
+      await tester.tap(find.byType(Switch).last);
+      await tester.pump();
+      expect(
+        tester
+            .widget<TranslationRegionOverlay>(
+              find.byType(TranslationRegionOverlay),
+            )
+            .showDetectionBox,
+        isFalse,
+      );
+      await tester.ensureVisible(find.byType(Switch).first);
+      await tester.tap(find.byType(Switch).first);
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('translation-text-region_001')),
+        findsOneWidget,
+      );
+      expect(controller.selectedRegionId, 'region_001');
+      final rerun = controller.detect();
+      expect(controller.analysis, isNull);
+      await rerun;
+      await tester.pump();
+      controller.selectImage('next.png', Uint8List.fromList(image));
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('translation-text-region_001')),
+        findsNothing,
+      );
+      expect(controller.selectedRegionId, isNull);
+    },
+  );
 
   testWidgets('shows detection error and permits retry', (tester) async {
     final pending = Completer<PageAnalysis>();

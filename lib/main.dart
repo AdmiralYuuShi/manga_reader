@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 
 import 'core/api/api_client.dart';
 import 'features/manga_processing/data/processing_repository.dart';
-import 'features/manga_processing/domain/page_analysis.dart';
 import 'features/manga_processing/presentation/processing_controller.dart';
 import 'features/manga_processing/presentation/region_geometry.dart';
+import 'features/manga_processing/presentation/translation_region_overlay.dart';
 
 void main() => runApp(const MangaTranslatorApp());
 
@@ -40,6 +40,8 @@ class _HomePageState extends State<HomePage> {
         ProcessingRepository(ProcessingRemoteDataSource(_apiClient)),
       );
   late Future<HealthResponse> _health = _apiClient.getHealth();
+  bool _showTranslationOverlay = true;
+  bool _showDetectionBoxes = true;
 
   void _refresh() => setState(() => _health = _apiClient.getHealth());
 
@@ -75,45 +77,77 @@ class _HomePageState extends State<HomePage> {
       children: [
         Padding(
           padding: const EdgeInsets.all(8),
-          child: Row(
-            children: [
-              FilledButton(
-                onPressed: _openImage,
-                child: const Text('Open Image'),
-              ),
-              const SizedBox(width: 8),
-              AnimatedBuilder(
-                animation: _controller,
-                builder: (context, _) => FilledButton.tonal(
-                  onPressed:
-                      _controller.imageBytes == null ||
-                          _controller.status == ProcessingStatus.processing
-                      ? null
-                      : _controller.detect,
-                  child: const Text('Analyze Page'),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                FilledButton(
+                  onPressed: _openImage,
+                  child: const Text('Open Image'),
                 ),
-              ),
-              const Spacer(),
-              FutureBuilder<HealthResponse>(
-                future: _health,
-                builder: (context, snapshot) => Text(
-                  snapshot.connectionState != ConnectionState.done
-                      ? 'Checking backend...'
-                      : !snapshot.hasData
-                      ? 'Backend unavailable'
-                      : !snapshot.data!.detectorReady
-                      ? 'Detector unavailable'
-                      : !snapshot.data!.ocrReady
-                      ? 'OCR unavailable'
-                      : 'Backend ready',
+                const SizedBox(width: 8),
+                AnimatedBuilder(
+                  animation: _controller,
+                  builder: (context, _) => FilledButton.tonal(
+                    onPressed:
+                        _controller.imageBytes == null ||
+                            _controller.status == ProcessingStatus.processing
+                        ? null
+                        : _controller.detect,
+                    child: const Text('Analyze Page'),
+                  ),
                 ),
-              ),
-              IconButton(
-                onPressed: _refresh,
-                icon: const Icon(Icons.refresh),
-                tooltip: 'Retry backend',
-              ),
-            ],
+                const SizedBox(width: 8),
+                Tooltip(
+                  message: 'Show translated text over detected regions',
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Translation Overlay'),
+                      Switch(
+                        value: _showTranslationOverlay,
+                        onChanged: (value) =>
+                            setState(() => _showTranslationOverlay = value),
+                      ),
+                    ],
+                  ),
+                ),
+                Tooltip(
+                  message: 'Show detected region boxes',
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Detection Boxes'),
+                      Switch(
+                        value: _showDetectionBoxes,
+                        onChanged: (value) =>
+                            setState(() => _showDetectionBoxes = value),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                FutureBuilder<HealthResponse>(
+                  future: _health,
+                  builder: (context, snapshot) => Text(
+                    snapshot.connectionState != ConnectionState.done
+                        ? 'Checking backend...'
+                        : !snapshot.hasData
+                        ? 'Backend unavailable'
+                        : !snapshot.data!.detectorReady
+                        ? 'Detector unavailable'
+                        : !snapshot.data!.ocrReady
+                        ? 'OCR unavailable'
+                        : 'Backend ready',
+                  ),
+                ),
+                IconButton(
+                  onPressed: _refresh,
+                  icon: const Icon(Icons.refresh),
+                  tooltip: 'Retry backend',
+                ),
+              ],
+            ),
           ),
         ),
         Expanded(
@@ -146,6 +180,25 @@ class _HomePageState extends State<HomePage> {
                               constraints.maxHeight,
                             );
                             final analysis = _controller.analysis;
+                            final imageSize = analysis == null
+                                ? null
+                                : Size(
+                                    analysis.width.toDouble(),
+                                    analysis.height.toDouble(),
+                                  );
+                            final imageRect = imageSize == null
+                                ? null
+                                : displayRectForImage(imageSize, canvasSize);
+                            final detectorRects = analysis == null
+                                ? <Rect>[]
+                                : [
+                                    for (final region in analysis.regions)
+                                      displayRectForRegion(
+                                        region,
+                                        imageSize!,
+                                        canvasSize,
+                                      ),
+                                  ];
                             return Stack(
                               children: [
                                 Positioned.fill(
@@ -155,14 +208,32 @@ class _HomePageState extends State<HomePage> {
                                   ),
                                 ),
                                 if (analysis != null)
-                                  for (final region in analysis.regions)
-                                    _regionBox(
-                                      region,
-                                      Size(
-                                        analysis.width.toDouble(),
-                                        analysis.height.toDouble(),
+                                  for (
+                                    var index = 0;
+                                    index < analysis.regions.length;
+                                    index++
+                                  )
+                                    TranslationRegionOverlay(
+                                      region: analysis.regions[index],
+                                      rect: detectorRects[index],
+                                      imageRect: imageRect!,
+                                      obstacles: [
+                                        for (
+                                          var other = 0;
+                                          other < detectorRects.length;
+                                          other++
+                                        )
+                                          if (other != index)
+                                            detectorRects[other],
+                                      ],
+                                      selected:
+                                          _controller.selectedRegionId ==
+                                          analysis.regions[index].id,
+                                      showTranslation: _showTranslationOverlay,
+                                      showDetectionBox: _showDetectionBoxes,
+                                      onTap: () => _controller.selectRegion(
+                                        analysis.regions[index].id,
                                       ),
-                                      canvasSize,
                                     ),
                               ],
                             );
@@ -212,31 +283,4 @@ class _HomePageState extends State<HomePage> {
       ],
     ),
   );
-
-  Widget _regionBox(DetectedRegion region, Size imageSize, Size canvasSize) {
-    final box = displayRectForRegion(region, imageSize, canvasSize);
-    return Positioned(
-      left: box.left,
-      top: box.top,
-      width: box.width,
-      height: box.height,
-      child: GestureDetector(
-        onTap: () => _controller.selectRegion(region.id),
-        child: Container(
-          key: ValueKey(region.id),
-          decoration: BoxDecoration(
-            color: _controller.selectedRegionId == region.id
-                ? Colors.amber.withValues(alpha: 0.3)
-                : Colors.red.withValues(alpha: 0.15),
-            border: Border.all(
-              color: _controller.selectedRegionId == region.id
-                  ? Colors.amber
-                  : Colors.red,
-              width: 2,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }

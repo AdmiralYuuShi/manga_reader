@@ -52,6 +52,7 @@ class ProcessingController extends ChangeNotifier {
       return;
     }
     status = ProcessingStatus.processing;
+    analysis = null;
     selectedRegionId = null;
     final version = _selectionVersion;
     error = null;
