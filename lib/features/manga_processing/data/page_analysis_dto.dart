@@ -15,6 +15,10 @@ PageAnalysis parsePageAnalysis(Map<String, dynamic> json) {
         y: box['y'] as int,
         width: box['width'] as int,
         height: box['height'] as int,
+        sourceLanguage: region['source_language'] as String?,
+        sourceText: region['source_text'] as String?,
+        errorCode:
+            (region['error'] as Map<String, dynamic>?)?['code'] as String?,
       );
     }).toList(),
   );

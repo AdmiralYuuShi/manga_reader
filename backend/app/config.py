@@ -12,6 +12,7 @@ class Settings:
     log_level: str = "INFO"
     detector_source: Path = BACKEND_DIR / "vendor" / "comic-text-detector"
     detector_model: Path = BACKEND_DIR / "models" / "comictextdetector.pt"
+    ocr_model: str = "kha-white/manga-ocr-base"
 
 
 def get_settings() -> Settings:
@@ -21,4 +22,5 @@ def get_settings() -> Settings:
         log_level=os.getenv("MANGA_LOG_LEVEL", "INFO").upper(),
         detector_source=Path(os.getenv("MANGA_DETECTOR_SOURCE", str(BACKEND_DIR / "vendor" / "comic-text-detector"))),
         detector_model=Path(os.getenv("MANGA_DETECTOR_MODEL", str(BACKEND_DIR / "models" / "comictextdetector.pt"))),
+        ocr_model=os.getenv("MANGA_OCR_MODEL", "kha-white/manga-ocr-base"),
     )

@@ -14,5 +14,5 @@ class HealthResponse(BaseModel):
 def health(request: Request) -> HealthResponse:
     return HealthResponse(
         status="ok", detector_ready=getattr(request.app.state, "detector", None) is not None,
-        ocr_ready=False,
+        ocr_ready=getattr(request.app.state, "ocr", None) is not None,
     )

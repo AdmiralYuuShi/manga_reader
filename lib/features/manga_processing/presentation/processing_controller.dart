@@ -14,13 +14,30 @@ class ProcessingController extends ChangeNotifier {
   PageAnalysis? analysis;
   String? error;
   ProcessingStatus status = ProcessingStatus.initial;
+  String? selectedRegionId;
   int _selectionVersion = 0;
+
+  DetectedRegion? get selectedRegion {
+    final regions = analysis?.regions;
+    if (regions == null || selectedRegionId == null) return null;
+    for (final region in regions) {
+      if (region.id == selectedRegionId) return region;
+    }
+    return null;
+  }
+
+  void selectRegion(String id) {
+    if (analysis?.regions.any((region) => region.id == id) != true) return;
+    selectedRegionId = id;
+    notifyListeners();
+  }
 
   void selectImage(String name, Uint8List bytes) {
     _selectionVersion++;
     filename = name;
     imageBytes = bytes;
     analysis = null;
+    selectedRegionId = null;
     error = null;
     status = ProcessingStatus.initial;
     notifyListeners();
@@ -35,6 +52,7 @@ class ProcessingController extends ChangeNotifier {
       return;
     }
     status = ProcessingStatus.processing;
+    selectedRegionId = null;
     final version = _selectionVersion;
     error = null;
     notifyListeners();

@@ -3,11 +3,10 @@ import logging
 from time import perf_counter
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
-from fastapi.concurrency import run_in_threadpool
 from PIL import Image, ImageOps, UnidentifiedImageError
 from pydantic import BaseModel
 
-from app.services.detection.base import DetectedRegion
+from app.services.manga_processor import DetectionFailed, MangaProcessor
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -23,9 +22,16 @@ class BoxResponse(BaseModel):
     height: int
 
 
+class RegionErrorResponse(BaseModel):
+    code: str
+
+
 class RegionResponse(BaseModel):
     id: str
     bbox: BoxResponse
+    source_language: str = "ja"
+    source_text: str | None
+    error: RegionErrorResponse | None = None
 
 
 class PageResponse(BaseModel):
@@ -35,6 +41,7 @@ class PageResponse(BaseModel):
 
 class ProcessingResponse(BaseModel):
     detection_ms: int
+    ocr_ms: int
     total_ms: int
 
 
@@ -69,19 +76,24 @@ async def analyze_page(request: Request, image: UploadFile = File(...)) -> Analy
     detector = getattr(request.app.state, "detector", None)
     if detector is None:
         raise HTTPException(503, "Text detector is not ready")
-    detection_start = perf_counter()
+    ocr = getattr(request.app.state, "ocr", None)
+    if ocr is None:
+        raise HTTPException(503, "Manga OCR is not ready")
+    processor = MangaProcessor(detector, ocr, request.app.state.detector_lock,
+                               request.app.state.ocr_lock)
     try:
-        async with request.app.state.detector_lock:
-            regions: list[DetectedRegion] = await run_in_threadpool(detector.detect, source)
-    except Exception as exc:
+        result = await processor.process(source)
+    except DetectionFailed as exc:
         logger.exception("Text detection failed")
         raise HTTPException(500, "Text detection failed") from exc
-    detection_ms = round((perf_counter() - detection_start) * 1000)
     total_ms = round((perf_counter() - start) * 1000)
-    logger.info("Detected %d regions in %d ms", len(regions), detection_ms)
     return AnalysisResponse(
         page=PageResponse(width=source.width, height=source.height),
-        regions=[RegionResponse(id=f"region_{index:03d}", bbox=BoxResponse(**vars(region)))
-                 for index, region in enumerate(regions, start=1)],
-        processing=ProcessingResponse(detection_ms=detection_ms, total_ms=total_ms),
+        regions=[RegionResponse(id=region.id, bbox=BoxResponse(**vars(region.bbox)),
+                                source_text=region.source_text,
+                                error=(RegionErrorResponse(code=region.error_code)
+                                       if region.error_code else None))
+                 for region in result.regions],
+        processing=ProcessingResponse(detection_ms=result.detection_ms,
+                                      ocr_ms=result.ocr_ms, total_ms=total_ms),
     )

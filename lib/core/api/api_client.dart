@@ -54,7 +54,12 @@ class ApiClient {
   Future<Map<String, dynamic>> postImage(
     String filename,
     List<int> bytes, {
-    Duration timeout = const Duration(minutes: 2),
+    Duration timeout = const Duration(
+      seconds: int.fromEnvironment(
+        'ANALYSIS_TIMEOUT_SECONDS',
+        defaultValue: 900,
+      ),
+    ),
   }) async {
     final uri = _baseUrl.resolve('/api/v1/pages/analyze');
     final boundary = 'manga-${DateTime.now().microsecondsSinceEpoch}';

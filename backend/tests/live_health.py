@@ -10,7 +10,7 @@ from pathlib import Path
 from urllib.request import urlopen
 from urllib.request import Request
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 
 if __name__ == "__main__":
@@ -30,24 +30,38 @@ if __name__ == "__main__":
                 break
             except OSError:
                 time.sleep(0.5)
-        assert result == {"status": "ok", "detector_ready": True, "ocr_ready": False}, result
+        assert result == {"status": "ok", "detector_ready": True, "ocr_ready": True}, result
         print(result)
-        image = io.BytesIO()
-        Image.new("RGB", (256, 384), "white").save(image, format="PNG")
+        if len(sys.argv) > 1:
+            image_path = Path(sys.argv[1])
+            image_data = image_path.read_bytes()
+            with Image.open(io.BytesIO(image_data)) as source:
+                expected_size = ImageOps.exif_transpose(source).size
+            image_type = "image/jpeg" if image_path.suffix.lower() in {".jpg", ".jpeg"} else "image/png"
+            filename = image_path.name
+        else:
+            image = io.BytesIO()
+            Image.new("RGB", (256, 384), "white").save(image, format="PNG")
+            image_data = image.getvalue()
+            expected_size = (256, 384)
+            image_type = "image/png"
+            filename = "blank.png"
         boundary = "manga-smoke-boundary"
         body = (
-            f"--{boundary}\r\nContent-Disposition: form-data; name=\"image\"; filename=\"blank.png\"\r\n"
-            "Content-Type: image/png\r\n\r\n"
-        ).encode() + image.getvalue() + f"\r\n--{boundary}--\r\n".encode()
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"image\"; filename=\"{filename}\"\r\n"
+            f"Content-Type: {image_type}\r\n\r\n"
+        ).encode() + image_data + f"\r\n--{boundary}--\r\n".encode()
         upload = Request(
             "http://127.0.0.1:8765/api/v1/pages/analyze", data=body,
             headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
         )
-        with urlopen(upload, timeout=180) as response:
+        with urlopen(upload, timeout=1200) as response:
             analysis = json.load(response)
-        assert analysis["page"] == {"width": 256, "height": 384}
+        assert analysis["page"] == {"width": expected_size[0], "height": expected_size[1]}
         assert isinstance(analysis["regions"], list)
-        print(f"Blank-image HTTP inference: {len(analysis['regions'])} regions")
+        nonempty = sum(bool(region.get("source_text")) for region in analysis["regions"])
+        print(f"HTTP inference: {len(analysis['regions'])} regions, {nonempty} non-empty OCR; "
+              f"timings: {analysis['processing']}")
     finally:
         process.terminate()
         process.wait(timeout=10)

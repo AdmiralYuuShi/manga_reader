@@ -15,6 +15,7 @@ def no_model_startup(monkeypatch):
         raise FileNotFoundError("model omitted in unit tests")
 
     monkeypatch.setattr("app.main.ComicTextDetector", unavailable)
+    monkeypatch.setattr("app.main.MangaOcrEngine", unavailable)
 
 
 class FakeDetector:
@@ -31,6 +32,16 @@ class FailingDetector:
         raise RuntimeError("private failure")
 
 
+class FakeOcr:
+    def recognize(self, image):
+        return "今日は"
+
+
+class FailingOcr:
+    def recognize(self, image):
+        raise RuntimeError("private OCR failure")
+
+
 def image_bytes():
     stream = io.BytesIO()
     Image.new("RGB", (20, 10), "white").save(stream, format="PNG")
@@ -45,6 +56,7 @@ def test_normalize_box_clips_original_coordinates():
 def test_empty_detection_is_success():
     with TestClient(app) as client:
         app.state.detector = FakeDetector([])
+        app.state.ocr = FakeOcr()
         response = client.post("/api/v1/pages/analyze", files={"image": ("page.png", image_bytes(), "image/png")})
         assert response.status_code == 200
         assert response.json()["page"] == {"width": 20, "height": 10}
@@ -56,18 +68,22 @@ def test_region_serialization_and_health():
     with TestClient(app) as client:
         assert client.get("/api/v1/health").json()["detector_ready"] is False
         app.state.detector = FakeDetector([DetectedRegion(1, 2, 3, 4)])
+        app.state.ocr = FakeOcr()
         assert client.get("/api/v1/health").json() == {
-            "status": "ok", "detector_ready": True, "ocr_ready": False
+            "status": "ok", "detector_ready": True, "ocr_ready": True
         }
         response = client.post("/api/v1/pages/analyze", files={"image": ("page.png", image_bytes(), "image/png")})
         assert response.json()["regions"] == [{
-            "id": "region_001", "bbox": {"x": 1, "y": 2, "width": 3, "height": 4}
+            "id": "region_001", "bbox": {"x": 1, "y": 2, "width": 3, "height": 4},
+            "source_language": "ja", "source_text": "今日は", "error": None,
         }]
+        assert response.json()["processing"]["ocr_ms"] >= 0
 
 
 def test_invalid_image_and_unavailable_detector():
     with TestClient(app) as client:
         app.state.detector = FakeDetector([])
+        app.state.ocr = FakeOcr()
         response = client.post("/api/v1/pages/analyze", files={"image": ("bad.png", b"garbage", "image/png")})
         assert response.status_code == 400
         app.state.detector = None
@@ -78,6 +94,26 @@ def test_invalid_image_and_unavailable_detector():
 def test_detector_failure_does_not_expose_exception():
     with TestClient(app) as client:
         app.state.detector = FailingDetector()
+        app.state.ocr = FakeOcr()
         response = client.post("/api/v1/pages/analyze", files={"image": ("page.png", image_bytes(), "image/png")})
         assert response.status_code == 500
         assert response.json()["detail"] == "Text detection failed"
+
+
+def test_ocr_unavailable_returns_503():
+    with TestClient(app) as client:
+        app.state.detector = FakeDetector([])
+        response = client.post("/api/v1/pages/analyze", files={"image": ("page.png", image_bytes(), "image/png")})
+        assert response.status_code == 503
+        assert response.json()["detail"] == "Manga OCR is not ready"
+
+
+def test_ocr_error_is_serialized_per_region():
+    with TestClient(app) as client:
+        app.state.detector = FakeDetector([DetectedRegion(1, 2, 3, 4)])
+        app.state.ocr = FailingOcr()
+        response = client.post("/api/v1/pages/analyze", files={"image": ("page.png", image_bytes(), "image/png")})
+        assert response.status_code == 200
+        region = response.json()["regions"][0]
+        assert region["source_text"] is None
+        assert region["error"] == {"code": "OCR_FAILED"}

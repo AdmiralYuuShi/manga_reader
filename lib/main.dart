@@ -90,7 +90,7 @@ class _HomePageState extends State<HomePage> {
                           _controller.status == ProcessingStatus.processing
                       ? null
                       : _controller.detect,
-                  child: const Text('Detect Text'),
+                  child: const Text('Analyze Page'),
                 ),
               ),
               const Spacer(),
@@ -99,11 +99,13 @@ class _HomePageState extends State<HomePage> {
                 builder: (context, snapshot) => Text(
                   snapshot.connectionState != ConnectionState.done
                       ? 'Checking backend...'
-                      : snapshot.hasData && snapshot.data!.detectorReady
-                      ? 'Detector ready'
-                      : snapshot.hasData
+                      : !snapshot.hasData
+                      ? 'Backend unavailable'
+                      : !snapshot.data!.detectorReady
                       ? 'Detector unavailable'
-                      : 'Backend unavailable',
+                      : !snapshot.data!.ocrReady
+                      ? 'OCR unavailable'
+                      : 'Backend ready',
                 ),
               ),
               IconButton(
@@ -122,7 +124,7 @@ class _HomePageState extends State<HomePage> {
                 if (_controller.status == ProcessingStatus.processing)
                   const LinearProgressIndicator(),
                 if (_controller.status == ProcessingStatus.processing)
-                  const Text('Detecting text...'),
+                  const Text('Detecting and recognizing text...'),
                 if (_controller.status == ProcessingStatus.failure)
                   Text(
                     'Detection failed: ${_controller.error}',
@@ -167,6 +169,29 @@ class _HomePageState extends State<HomePage> {
                           },
                         ),
                 ),
+                if (_controller.selectedRegion case final region?)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('Selected Region: ${region.id}'),
+                        const Text('Japanese:'),
+                        Text(
+                          region.errorCode != null
+                              ? 'OCR failed for this region (${region.errorCode})'
+                              : region.sourceText?.isNotEmpty == true
+                              ? region.sourceText!
+                              : 'No text recognized',
+                        ),
+                      ],
+                    ),
+                  ),
               ],
             ),
           ),
@@ -182,12 +207,20 @@ class _HomePageState extends State<HomePage> {
       top: box.top,
       width: box.width,
       height: box.height,
-      child: IgnorePointer(
+      child: GestureDetector(
+        onTap: () => _controller.selectRegion(region.id),
         child: Container(
           key: ValueKey(region.id),
           decoration: BoxDecoration(
-            color: Colors.red.withValues(alpha: 0.15),
-            border: Border.all(color: Colors.red, width: 2),
+            color: _controller.selectedRegionId == region.id
+                ? Colors.amber.withValues(alpha: 0.3)
+                : Colors.red.withValues(alpha: 0.15),
+            border: Border.all(
+              color: _controller.selectedRegionId == region.id
+                  ? Colors.amber
+                  : Colors.red,
+              width: 2,
+            ),
           ),
         ),
       ),

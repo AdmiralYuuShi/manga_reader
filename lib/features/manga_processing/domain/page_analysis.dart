@@ -5,6 +5,9 @@ class DetectedRegion {
     required this.y,
     required this.width,
     required this.height,
+    this.sourceLanguage,
+    this.sourceText,
+    this.errorCode,
   });
 
   final String id;
@@ -12,6 +15,9 @@ class DetectedRegion {
   final int y;
   final int width;
   final int height;
+  final String? sourceLanguage;
+  final String? sourceText;
+  final String? errorCode;
 }
 
 class PageAnalysis {
