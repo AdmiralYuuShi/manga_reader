@@ -2,6 +2,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import 'core/api/api_client.dart';
+import 'features/chapter/chapter_controller.dart';
 import 'features/manga_processing/data/processing_repository.dart';
 import 'features/manga_processing/presentation/processing_controller.dart';
 import 'features/manga_processing/presentation/region_geometry.dart';
@@ -23,10 +24,16 @@ class MangaTranslatorApp extends StatelessWidget {
 }
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key, this.apiClient, this.controller});
+  const HomePage({
+    super.key,
+    this.apiClient,
+    this.controller,
+    this.chapterController,
+  });
 
   final ApiClient? apiClient;
   final ProcessingController? controller;
+  final ChapterController? chapterController;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -40,6 +47,9 @@ class _HomePageState extends State<HomePage> {
         ProcessingRepository(ProcessingRemoteDataSource(_apiClient)),
       );
   late Future<HealthResponse> _health = _apiClient.getHealth();
+  late final ChapterController _chapter =
+      widget.chapterController ?? ChapterController(_controller.repository);
+  late bool _chapterMode = _chapter.directoryPath != null;
   bool _showTranslationOverlay = true;
   bool _showDetectionBoxes = true;
 
@@ -53,6 +63,8 @@ class _HomePageState extends State<HomePage> {
     try {
       final selected = await openFile(acceptedTypeGroups: [images]);
       if (selected != null) {
+        await _chapter.stopAndWait();
+        setState(() => _chapterMode = false);
         _controller.selectImage(selected.name, await selected.readAsBytes());
       }
     } catch (error) {
@@ -64,11 +76,154 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<void> _openChapter() async {
+    try {
+      final path = await getDirectoryPath(confirmButtonText: 'Open Chapter');
+      if (path == null) return;
+      await _chapter.open(path);
+      if (mounted) setState(() => _chapterMode = true);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open chapter: $error')),
+        );
+      }
+    }
+  }
+
   @override
   void dispose() {
+    if (widget.chapterController == null) _chapter.dispose();
     if (widget.controller == null) _controller.dispose();
     super.dispose();
   }
+
+  Widget _chapterToolbar() {
+    final page = _chapter.selectedPage;
+    final average = _chapter.averageDuration;
+    String estimate(Duration? value) =>
+        value == null ? 'Calculating...' : '~${formatDuration(value)}';
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                _chapter.name,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              FilledButton.tonal(
+                onPressed: _chapter.processing || _chapter.pendingCount == 0
+                    ? null
+                    : _chapter.processPending,
+                child: const Text('Process Chapter'),
+              ),
+              if (_chapter.processing)
+                OutlinedButton(
+                  onPressed: _chapter.stopRequested
+                      ? null
+                      : _chapter.requestStop,
+                  child: Text(
+                    _chapter.stopRequested
+                        ? 'Stopping after page...'
+                        : 'Stop After Page',
+                  ),
+                ),
+              if (page?.status == ChapterPageStatus.failed &&
+                  !_chapter.processing)
+                OutlinedButton(
+                  onPressed: () =>
+                      _chapter.retryPage(_chapter.selectedPageIndex),
+                  child: const Text('Retry Page'),
+                ),
+              IconButton(
+                onPressed: _chapter.selectedPageIndex > 0
+                    ? () => _chapter.selectPage(_chapter.selectedPageIndex - 1)
+                    : null,
+                icon: const Icon(Icons.chevron_left),
+                tooltip: 'Previous Page',
+              ),
+              Text(
+                _chapter.pages.isEmpty
+                    ? 'Page 0 / 0'
+                    : 'Page ${_chapter.selectedPageIndex + 1} / ${_chapter.pages.length}',
+              ),
+              IconButton(
+                onPressed:
+                    _chapter.selectedPageIndex + 1 < _chapter.pages.length
+                    ? () => _chapter.selectPage(_chapter.selectedPageIndex + 1)
+                    : null,
+                icon: const Icon(Icons.chevron_right),
+                tooltip: 'Next Page',
+              ),
+            ],
+          ),
+          if (_chapter.error != null)
+            Text(
+              _chapter.error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          if (page?.error != null)
+            Text(
+              '${page!.name}: ${page.error}',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          LinearProgressIndicator(
+            value: _chapter.pages.isEmpty
+                ? 0
+                : _chapter.settledCount / _chapter.pages.length,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${_chapter.completedCount} completed / ${_chapter.pages.length} pages, '
+            '${_chapter.pages.where((p) => p.status == ChapterPageStatus.failed).length} failed',
+          ),
+          if (_chapter.currentPageIndex >= 0)
+            Text(
+              'Processing page ${_chapter.currentPageIndex + 1} / ${_chapter.pages.length} '
+              '• Page elapsed: ${formatDuration(_chapter.pageElapsed)} '
+              '• Page estimate: ${estimate(average)} '
+              '• Page remaining: ${estimate(_chapter.pageRemaining)}',
+            ),
+          Text(
+            'Chapter elapsed: ${formatDuration(_chapter.chapterElapsed)} '
+            '• Estimated remaining: ${estimate(_chapter.estimatedRemaining)} '
+            '• Estimated total: ${estimate(_chapter.estimatedTotal)}',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _pageList() => SizedBox(
+    width: 190,
+    child: ListView.builder(
+      itemCount: _chapter.pages.length,
+      itemBuilder: (context, index) {
+        final page = _chapter.pages[index];
+        final icon = switch (page.status) {
+          ChapterPageStatus.pending => Icons.radio_button_unchecked,
+          ChapterPageStatus.processing => Icons.hourglass_top,
+          ChapterPageStatus.completed => Icons.check_circle,
+          ChapterPageStatus.failed => Icons.error,
+        };
+        return ListTile(
+          selected: index == _chapter.selectedPageIndex,
+          dense: true,
+          leading: Icon(icon, size: 18),
+          title: Text(page.name, overflow: TextOverflow.ellipsis),
+          subtitle: page.duration == null
+              ? null
+              : Text(formatDuration(page.duration!)),
+          onTap: () => _chapter.selectPage(index),
+        );
+      },
+    ),
+  );
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -90,7 +245,8 @@ class _HomePageState extends State<HomePage> {
                   animation: _controller,
                   builder: (context, _) => FilledButton.tonal(
                     onPressed:
-                        _controller.imageBytes == null ||
+                        _chapterMode ||
+                            _controller.imageBytes == null ||
                             _controller.status == ProcessingStatus.processing
                         ? null
                         : _controller.detect,
@@ -126,6 +282,11 @@ class _HomePageState extends State<HomePage> {
                     ],
                   ),
                 ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: _openChapter,
+                  child: const Text('Open Chapter'),
+                ),
                 const SizedBox(width: 16),
                 FutureBuilder<HealthResponse>(
                   future: _health,
@@ -152,95 +313,144 @@ class _HomePageState extends State<HomePage> {
         ),
         Expanded(
           child: AnimatedBuilder(
-            animation: _controller,
+            animation: Listenable.merge([_controller, _chapter]),
             builder: (context, _) => Column(
               children: [
-                if (_controller.status == ProcessingStatus.processing)
+                if (_chapterMode) _chapterToolbar(),
+                if (!_chapterMode &&
+                    _controller.status == ProcessingStatus.processing)
                   const LinearProgressIndicator(),
-                if (_controller.status == ProcessingStatus.processing)
+                if (!_chapterMode &&
+                    _controller.status == ProcessingStatus.processing)
                   const Text('Detecting, recognizing, and translating text...'),
-                if (_controller.status == ProcessingStatus.failure)
+                if (!_chapterMode &&
+                    _controller.status == ProcessingStatus.failure)
                   Text(
                     'Detection failed: ${_controller.error}',
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.error,
                     ),
                   ),
-                if (_controller.status == ProcessingStatus.success)
+                if (!_chapterMode &&
+                    _controller.status == ProcessingStatus.success)
                   Text(
                     '${_controller.analysis!.regions.length} regions detected',
                   ),
                 Expanded(
-                  child: _controller.imageBytes == null
-                      ? const Center(child: Text('Open a manga image to begin'))
-                      : LayoutBuilder(
-                          builder: (context, constraints) {
-                            final canvasSize = Size(
-                              constraints.maxWidth,
-                              constraints.maxHeight,
-                            );
-                            final analysis = _controller.analysis;
-                            final imageSize = analysis == null
-                                ? null
-                                : Size(
-                                    analysis.width.toDouble(),
-                                    analysis.height.toDouble(),
+                  child: Row(
+                    children: [
+                      if (_chapterMode) _pageList(),
+                      Expanded(
+                        child:
+                            (_chapterMode
+                                ? _chapter.selectedPage == null
+                                : _controller.imageBytes == null)
+                            ? const Center(
+                                child: Text('Open a manga image to begin'),
+                              )
+                            : LayoutBuilder(
+                                builder: (context, constraints) {
+                                  final canvasSize = Size(
+                                    constraints.maxWidth,
+                                    constraints.maxHeight,
                                   );
-                            final imageRect = imageSize == null
-                                ? null
-                                : displayRectForImage(imageSize, canvasSize);
-                            final detectorRects = analysis == null
-                                ? <Rect>[]
-                                : [
-                                    for (final region in analysis.regions)
-                                      displayRectForRegion(
-                                        region,
-                                        imageSize!,
-                                        canvasSize,
+                                  final analysis = _chapterMode
+                                      ? _chapter.analysis
+                                      : _controller.analysis;
+                                  final imageSize = analysis == null
+                                      ? null
+                                      : Size(
+                                          analysis.width.toDouble(),
+                                          analysis.height.toDouble(),
+                                        );
+                                  final imageRect = imageSize == null
+                                      ? null
+                                      : displayRectForImage(
+                                          imageSize,
+                                          canvasSize,
+                                        );
+                                  final detectorRects = analysis == null
+                                      ? <Rect>[]
+                                      : [
+                                          for (final region in analysis.regions)
+                                            displayRectForRegion(
+                                              region,
+                                              imageSize!,
+                                              canvasSize,
+                                            ),
+                                        ];
+                                  return Stack(
+                                    children: [
+                                      Positioned.fill(
+                                        child: _chapterMode
+                                            ? Image.file(
+                                                _chapter.selectedPage!.file,
+                                                fit: BoxFit.contain,
+                                                errorBuilder:
+                                                    (
+                                                      context,
+                                                      error,
+                                                      stack,
+                                                    ) => Center(
+                                                      child: Text(
+                                                        'Could not display image: $error',
+                                                      ),
+                                                    ),
+                                              )
+                                            : Image.memory(
+                                                _controller.imageBytes!,
+                                                fit: BoxFit.contain,
+                                              ),
                                       ),
-                                  ];
-                            return Stack(
-                              children: [
-                                Positioned.fill(
-                                  child: Image.memory(
-                                    _controller.imageBytes!,
-                                    fit: BoxFit.contain,
-                                  ),
-                                ),
-                                if (analysis != null)
-                                  for (
-                                    var index = 0;
-                                    index < analysis.regions.length;
-                                    index++
-                                  )
-                                    TranslationRegionOverlay(
-                                      region: analysis.regions[index],
-                                      rect: detectorRects[index],
-                                      imageRect: imageRect!,
-                                      obstacles: [
+                                      if (analysis != null)
                                         for (
-                                          var other = 0;
-                                          other < detectorRects.length;
-                                          other++
+                                          var index = 0;
+                                          index < analysis.regions.length;
+                                          index++
                                         )
-                                          if (other != index)
-                                            detectorRects[other],
-                                      ],
-                                      selected:
-                                          _controller.selectedRegionId ==
-                                          analysis.regions[index].id,
-                                      showTranslation: _showTranslationOverlay,
-                                      showDetectionBox: _showDetectionBoxes,
-                                      onTap: () => _controller.selectRegion(
-                                        analysis.regions[index].id,
-                                      ),
-                                    ),
-                              ],
-                            );
-                          },
-                        ),
+                                          TranslationRegionOverlay(
+                                            region: analysis.regions[index],
+                                            rect: detectorRects[index],
+                                            imageRect: imageRect!,
+                                            obstacles: [
+                                              for (
+                                                var other = 0;
+                                                other < detectorRects.length;
+                                                other++
+                                              )
+                                                if (other != index)
+                                                  detectorRects[other],
+                                            ],
+                                            selected:
+                                                (_chapterMode
+                                                    ? _chapter.selectedRegionId
+                                                    : _controller
+                                                          .selectedRegionId) ==
+                                                analysis.regions[index].id,
+                                            showTranslation:
+                                                _showTranslationOverlay,
+                                            showDetectionBox:
+                                                _showDetectionBoxes,
+                                            onTap: () => _chapterMode
+                                                ? _chapter.selectRegion(
+                                                    analysis.regions[index].id,
+                                                  )
+                                                : _controller.selectRegion(
+                                                    analysis.regions[index].id,
+                                                  ),
+                                          ),
+                                    ],
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
                 ),
-                if (_controller.selectedRegion case final region?)
+                if ((_chapterMode
+                        ? _chapter.selectedRegion
+                        : _controller.selectedRegion)
+                    case final region?)
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),

@@ -1261,17 +1261,19 @@ Do not trust only the file extension.
 
 ---
 
-# 37. Future Chapter Processing
+# 37. Chapter Processing
 
-The architecture must allow:
+M7 orchestrates chapter pages in Flutter and sends each page sequentially to:
 
 ```http
-POST /api/v1/chapters/analyze
+POST /api/v1/pages/analyze
 ```
 
-but do NOT implement it during the first MVP unless requested.
+No chapter endpoint is needed for the initial implementation. Detector and OCR
+instances remain loaded once by the backend lifespan and are reused by these
+page requests.
 
-Expected future workflow:
+Current workflow:
 
 ```text
 Folder
@@ -1286,10 +1288,11 @@ process page 2
  ↓
 ...
  ↓
-persist metadata
+keep results in memory
 ```
 
-Progress should eventually be observable from Flutter.
+Progress, page status, elapsed time, and approximate ETA are observable from
+Flutter. M6 will add persistence later.
 
 ---
 
@@ -1791,7 +1794,7 @@ Tasks:
 - progress,
 - cancellation,
 - failure handling,
-- metadata persistence.
+- in-memory chapter state and timing.
 
 Example:
 
@@ -1868,19 +1871,30 @@ Original files must remain untouched.
 
 # 53. Current Priority
 
-Unless the user explicitly requests otherwise, development priority is:
+Milestone numbers group features; they do not require implementation in numeric order.
+M0, M1, M2, M3, and M4 are COMPLETE. M7 is NEXT / PRIORITIZED.
+M5, M6, M8, M9, and M10 are PLANNED.
+
+Execution priority is:
 
 ```text
-Milestone 0
-    ↓
-Milestone 1
-    ↓
-Milestone 2
-    ↓
-Milestone 3
-    ↓
-Milestone 4
+M0 → M1 → M2 → M3 → M4 → M7 → M5 → M6 → M8 → M9 → M10
 ```
+
+M7 comes before M5 and M6 to establish Chapter → Page → Region before
+editing and persistence are designed around those entities. M5 editing will
+operate on Chapter → Page → Region. M6 will persist that state and its results.
+M7 itself does not persist data.
+
+M7 reuses the existing per-page detection, OCR, and translation pipeline through
+`POST /api/v1/pages/analyze`. Do not duplicate those implementations. Detector
+and OCR models load once at backend startup and are reused across pages.
+Correctness and bounded resource usage take priority over throughput: process
+pages sequentially by default, never the whole chapter concurrently. A failed
+page must not invalidate completed pages or prevent later pages from running.
+
+Current objective: implement M7 chapter processing and validate Chapter → Page
+→ Region in memory. Do not start M5 or M6 as part of M7.
 
 Do not begin:
 
