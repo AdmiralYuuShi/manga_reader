@@ -1922,10 +1922,10 @@ M0 → M1 → M2 → M3 → M4 → M7 → M5 → M6
    → M11 → M15 → M12 → M16 → M17 → M13 → M14 → V1 Release
 ```
 
-Current milestone: **M16 — Manga Font Selection (IMPLEMENTED; AWAITING MANUAL VALIDATION)**.
-M12 is complete following successful manual validation. M15 Phase A profiling
-and Phase B GPU enablement are complete. M17 is next after M16 manual
-validation; M17, M13, and M14 remain PLANNED.
+Current milestone: **M17 — Light / Dark Mode (IMPLEMENTED; AWAITING MANUAL WINDOWS VALIDATION)**.
+M12 and M16 are complete following successful manual validation. M15 Phase A
+profiling and Phase B GPU enablement are complete. M13 follows M17 manual
+validation; M13 and M14 remain PLANNED.
 
 ### M11 — Interactive Text Box Move & Resize (COMPLETE)
 
@@ -1979,7 +1979,7 @@ chapter processing, and persisted edits remain available. Automated Flutter
 tests, static analysis, and the Windows build pass. The user completed manual
 Windows reader validation successfully with no issues or regressions found.
 
-### M16 — Manga Font Selection (IMPLEMENTED; AWAITING MANUAL VALIDATION)
+### M16 — Manga Font Selection (COMPLETE)
 
 Offer a curated, global manga/comic overlay font preference, persisted across
 restarts. Candidate fonts include Comic Neue (initial recommendation), Patrick
@@ -1994,14 +1994,24 @@ from chapter metadata in application-support storage, falls back safely to the
 default, and updates translated overlays through the existing adaptive layout.
 The compact Settings selector previews each font. See `README.md` for the full
 ten-candidate audit and manual Windows checklist. Automated Flutter analysis,
-tests, and Windows build pass; manual validation remains before M16 is COMPLETE.
+tests, and Windows build pass. The user completed M16 manual validation.
 
-### M17 — Light / Dark Mode (PLANNED)
+### M17 — Light / Dark Mode (COMPLETE)
 
 Support persisted System, Light, and Dark appearance settings; default to
 System. Use Flutter theme architecture. Dark mode changes application chrome
 only: preserve source image pixels, brightness, contrast, and stored images.
 M12 should prepare for this without another major layout rewrite.
+
+The app uses centralized light and dark Material themes with `ThemeMode` set
+from a global System/Light/Dark preference. System is the default and follows
+platform brightness. Appearance shares M16's application-support preference
+file without entering chapter metadata; old font-only preferences remain valid.
+The existing Settings dialog changes appearance live. M12 chrome uses semantic
+theme colors, while manga image rendering and fixed overlay/handle colors are
+unchanged. See `README.md` for the manual Windows checklist. Automated Flutter
+analysis, tests, and Windows build pass; manual validation remains before M17
+is COMPLETE.
 
 ### M13 — Recursive Folder / Subfolder Processing (PLANNED)
 

@@ -10,7 +10,7 @@ import 'package:manga_translator/features/manga_processing/domain/page_analysis.
 import 'package:manga_translator/features/manga_processing/presentation/manga_viewer_workspace.dart';
 import 'package:manga_translator/features/manga_processing/presentation/processing_controller.dart';
 import 'package:manga_translator/features/settings/manga_overlay_font.dart';
-import 'package:manga_translator/features/settings/overlay_font_preferences.dart';
+import 'package:manga_translator/features/settings/app_preferences.dart';
 import 'package:manga_translator/main.dart';
 
 class IdleRepository extends ProcessingRepository {
@@ -183,7 +183,7 @@ void main() {
       final preferenceFile = File(
         '${directory!.path}${Platform.pathSeparator}font.json',
       );
-      final preferences = OverlayFontPreferences(
+      final preferences = AppPreferences(
         preferenceFile: () async => preferenceFile,
       );
       final controller = ProcessingController(IdleRepository());
@@ -191,7 +191,7 @@ void main() {
       controller.analysis = analysis;
       await tester.pumpWidget(
         MaterialApp(
-          home: HomePage(controller: controller, fontPreferences: preferences),
+          home: HomePage(controller: controller, preferences: preferences),
         ),
       );
       await tester.pump();
@@ -225,10 +225,7 @@ void main() {
         ..analysis = analysis;
       await tester.pumpWidget(
         MaterialApp(
-          home: HomePage(
-            chapterController: chapter,
-            fontPreferences: preferences,
-          ),
+          home: HomePage(chapterController: chapter, preferences: preferences),
         ),
       );
       await tester.pump();

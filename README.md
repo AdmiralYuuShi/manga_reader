@@ -73,6 +73,30 @@ confirm the global font remains selected. Restart, test offline, resize the
 window, and confirm the selection persists, the selector does not overflow,
 the chrome font stays unchanged, and manga image pixels remain unchanged.
 
+## Appearance (Milestone 17)
+
+**Settings** offers **System**, **Light**, and **Dark** for application chrome.
+System is the default and follows Windows appearance changes reported to
+Flutter. Selection updates the open reader immediately and is saved alongside
+the M16 font ID in `overlay_font.json` under application-support storage.
+Existing font-only preferences keep their font and default to System; missing,
+unknown, or corrupt appearance values also default to System. Appearance does
+not change the selected manga font, chapter metadata, OCR or translation, or
+source manga image pixels. Fixed manga overlay and box-handle colors remain for
+visibility over artwork. Native Windows title-bar theming is outside M17.
+
+Manual Windows check: start Windows in Light, launch with no appearance
+preference, and confirm System uses light chrome. Switch to Dark, Light, and
+System; confirm immediate changes to panels, navigation, inspector, controls,
+dialogs, and status without any image tint or reprocessing. If practical,
+change Windows appearance while System is selected and confirm the app follows.
+Open and edit a single image, select and move/resize a region, then switch
+themes; confirm text, geometry, selection, and image appearance are intact.
+Repeat while navigating a chapter. Change the manga font separately, restart,
+and confirm both preferences return. Check the narrow-window reader and
+Settings in Light and Dark for overflow and readable contrast; confirm cached
+image/chapter data is unchanged.
+
 ## Chapter processing (Milestone 7)
 
 **Open Chapter** selects a folder. Direct child JPEG, PNG, and WebP files are

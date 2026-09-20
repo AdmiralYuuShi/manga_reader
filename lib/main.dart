@@ -2,6 +2,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'app/app_theme.dart';
 import 'core/api/api_client.dart';
 import 'features/chapter/chapter_controller.dart';
 import 'features/chapter/chapter_persistence.dart';
@@ -10,20 +11,32 @@ import 'features/manga_processing/presentation/processing_controller.dart';
 import 'features/manga_processing/presentation/manga_viewer_workspace.dart';
 import 'features/manga_processing/presentation/region_editor.dart';
 import 'features/settings/manga_overlay_font.dart';
-import 'features/settings/overlay_font_preferences.dart';
+import 'features/settings/appearance_mode.dart';
+import 'features/settings/app_preferences.dart';
 
-void main() => runApp(const MangaTranslatorApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final preferences = AppPreferences();
+  await preferences.load();
+  runApp(MangaTranslatorApp(preferences: preferences));
+}
 
 class MangaTranslatorApp extends StatelessWidget {
-  const MangaTranslatorApp({super.key});
+  const MangaTranslatorApp({super.key, required this.preferences, this.home});
+
+  final AppPreferences preferences;
+  final Widget? home;
 
   @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: 'Manga Translator',
-    theme: ThemeData(
-      colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: preferences,
+    builder: (context, _) => MaterialApp(
+      title: 'Manga Translator',
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: preferences.appearance.themeMode,
+      home: home ?? HomePage(preferences: preferences),
     ),
-    home: const HomePage(),
   );
 }
 
@@ -33,13 +46,13 @@ class HomePage extends StatefulWidget {
     this.apiClient,
     this.controller,
     this.chapterController,
-    this.fontPreferences,
+    this.preferences,
   });
 
   final ApiClient? apiClient;
   final ProcessingController? controller;
   final ChapterController? chapterController;
-  final OverlayFontPreferences? fontPreferences;
+  final AppPreferences? preferences;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -55,8 +68,8 @@ class _HomePageState extends State<HomePage> {
   late Future<HealthResponse> _health = _apiClient.getHealth();
   late final ChapterController _chapter =
       widget.chapterController ?? ChapterController(_controller.repository);
-  late final OverlayFontPreferences _fontPreferences =
-      widget.fontPreferences ?? OverlayFontPreferences();
+  late final AppPreferences _preferences =
+      widget.preferences ?? AppPreferences();
   late bool _chapterMode = _chapter.directoryPath != null;
   bool _showTranslationOverlay = true;
   bool _showDetectionBoxes = true;
@@ -64,7 +77,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    _fontPreferences.load();
+    if (widget.preferences == null) _preferences.load();
   }
 
   Future<void> _showSettings() => showDialog<void>(
@@ -74,11 +87,34 @@ class _HomePageState extends State<HomePage> {
       content: SizedBox(
         width: 340,
         child: ListenableBuilder(
-          listenable: _fontPreferences,
+          listenable: _preferences,
           builder: (context, _) => Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Text('Appearance', style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 8),
+              SegmentedButton<AppearanceMode>(
+                segments: [
+                  for (final mode in AppearanceMode.values)
+                    ButtonSegment(value: mode, label: Text(mode.label)),
+                ],
+                selected: {_preferences.appearance},
+                onSelectionChanged: (selection) async {
+                  try {
+                    await _preferences.selectAppearance(selection.single);
+                  } catch (error) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(this.context).showSnackBar(
+                        SnackBar(
+                          content: Text('Could not save appearance: $error'),
+                        ),
+                      );
+                    }
+                  }
+                },
+              ),
+              const SizedBox(height: 20),
               Text(
                 'Manga overlay font',
                 style: Theme.of(context).textTheme.titleSmall,
@@ -94,14 +130,14 @@ class _HomePageState extends State<HomePage> {
                     'Manga 123',
                     style: TextStyle(fontFamily: font.family, fontSize: 18),
                   ),
-                  trailing: _fontPreferences.selected == font
+                  trailing: _preferences.overlayFont == font
                       ? const Icon(Icons.check)
                       : null,
-                  selected: _fontPreferences.selected == font,
+                  selected: _preferences.overlayFont == font,
                   onTap: () async {
                     Navigator.of(dialogContext).pop();
                     try {
-                      await _fontPreferences.select(font);
+                      await _preferences.selectFont(font);
                     } catch (error) {
                       if (mounted) {
                         ScaffoldMessenger.of(this.context).showSnackBar(
@@ -184,7 +220,7 @@ class _HomePageState extends State<HomePage> {
   void dispose() {
     if (widget.chapterController == null) _chapter.dispose();
     if (widget.controller == null) _controller.dispose();
-    if (widget.fontPreferences == null) _fontPreferences.dispose();
+    if (widget.preferences == null) _preferences.dispose();
     super.dispose();
   }
 
@@ -439,7 +475,7 @@ class _HomePageState extends State<HomePage> {
                         _controller.commitBoxPreview();
                       }
                     },
-                    overlayFont: _fontPreferences.selected,
+                    overlayFont: _preferences.overlayFont,
                   ),
           ),
         ),
@@ -679,7 +715,7 @@ class _HomePageState extends State<HomePage> {
     // No Need Appbar
     // appBar: AppBar(title: const Text('Manga Translator')),
     body: AnimatedBuilder(
-      animation: Listenable.merge([_controller, _chapter, _fontPreferences]),
+      animation: Listenable.merge([_controller, _chapter, _preferences]),
       builder: (context, _) => Column(
         children: [
           _topActions(),
