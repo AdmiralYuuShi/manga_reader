@@ -30,6 +30,11 @@ class RegionEdit {
 
 class PageEdits {
   final Map<String, RegionEdit> _regions = {};
+  PageEdits copy() {
+    final result = PageEdits();
+    result._regions.addAll(_regions);
+    return result;
+  }
   Iterable<MapEntry<String, RegionEdit>> get entries => _regions.entries;
   RegionEdit forRegion(String id) => _regions[id] ?? const RegionEdit();
   bool get hasEdits => _regions.isNotEmpty;

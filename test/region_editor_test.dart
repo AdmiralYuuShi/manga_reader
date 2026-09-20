@@ -55,6 +55,25 @@ void main() {
       find.byKey(const ValueKey('detector-box-r')),
     );
     final overlayBefore = tester.getTopLeft(find.byKey(const ValueKey('r')));
+    expect(find.byKey(const ValueKey('move-box')), findsOneWidget);
+    for (final handle in [
+      'topLeft', 'top', 'topRight', 'left', 'right',
+      'bottomLeft', 'bottom', 'bottomRight',
+    ]) {
+      expect(find.byKey(ValueKey('resize-$handle')), findsOneWidget);
+    }
+
+    await tester.drag(find.byKey(const ValueKey('move-box')), const Offset(20, 0));
+    await tester.pump();
+    expect(controller.edits.forRegion('r').box, isNotNull);
+    expect(controller.edits.forRegion('r').box!.x, greaterThan(20));
+    expect(
+      tester.widget<TextField>(find.byKey(const ValueKey('box-field-0'))).controller!.text,
+      '${controller.edits.forRegion('r').box!.x}',
+    );
+    expect(controller.analysis!.regions.first.x, 20);
+    controller.resetBox('r');
+    await tester.pump();
 
     await tester.enterText(
       find.byKey(const ValueKey('translation-editor')),

@@ -1922,11 +1922,10 @@ M0 → M1 → M2 → M3 → M4 → M7 → M5 → M6
    → M11 → M15 → M12 → M16 → M17 → M13 → M14 → V1 Release
 ```
 
-Current NEXT milestone: **M11 — Interactive Text Box Move & Resize**.
-M15 follows M11. M12, M16, M17, M13, and M14 remain PLANNED. Do not start
-M11 merely because this roadmap was updated; use its dedicated task.
+Current NEXT milestone: **M15 — Processing Performance Optimization**.
+M11 is complete. M12, M16, M17, M13, and M14 remain PLANNED.
 
-### M11 — Interactive Text Box Move & Resize (NEXT)
+### M11 — Interactive Text Box Move & Resize (COMPLETE)
 
 Add selected-box move and resize handles in the manga viewer. Keep edited
 geometry in original-image pixels and within image bounds. Numeric M5 inputs
@@ -1935,7 +1934,7 @@ a second geometry model. The detector bbox remains immutable. M4 renders from
 effective geometry, and M6 persists the same override. Detailed interaction
 requirements belong to the dedicated M11 task.
 
-### M15 — Processing Performance Optimization (PLANNED; after M11)
+### M15 — Processing Performance Optimization (NEXT)
 
 Observed processing is approximately 1 minute 40 seconds per image, making a
 20–30 page chapter roughly 30–50+ minutes. Profile image I/O/preparation,

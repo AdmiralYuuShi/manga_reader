@@ -44,7 +44,10 @@ pixels. **Apply Box** validates positive dimensions and image bounds before
 using the box as the translation overlay's base. M4 font fitting and local
 expansion still apply to that base. **Detection Boxes** continue to show the
 original detector rectangle. **Reset Box** restores the detector geometry
-without changing the translation edit. Mouse drag and resize are not available.
+without changing the translation edit. Select a region to show its editable
+base-box outline and eight handles. Drag inside the box to move it or drag a
+handle to resize it; the numeric fields update live. Geometry stays within the
+source image and is saved when the gesture ends. A click alone creates no edit.
 
 Edits belong to their page and region and are saved automatically. Opening a
 new image/chapter clears the current viewer state; saved edits return with valid
@@ -67,7 +70,8 @@ unchanged page restores immediately without a backend request. Newly added
 pages stay pending, removed pages are absent from the viewer, and a rename is
 treated as a new page. Completed pages are saved as they finish. Translation
 edits are saved after a 700 ms pause; box changes and resets queue a save
-immediately. Writes are serialized and use a temporary file plus backup during
+immediately; interactive box gestures save once at completion. Writes are
+serialized and use a temporary file plus backup during
 replacement.
 
 Changed images, incompatible cache versions, or invalid page data are not

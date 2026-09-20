@@ -28,6 +28,7 @@ class RegionEditor extends StatefulWidget {
 class _RegionEditorState extends State<RegionEditor> {
   late final TextEditingController translation;
   late final List<TextEditingController> box;
+  late RegionBox _displayedBox;
   String? validation;
 
   @override
@@ -37,12 +38,26 @@ class _RegionEditorState extends State<RegionEditor> {
       text: widget.edits.effectiveTranslation(widget.region) ?? '',
     );
     final values = widget.edits.effectiveBox(widget.region);
+    _displayedBox = values;
     box = [
       values.x,
       values.y,
       values.width,
       values.height,
     ].map((value) => TextEditingController(text: '$value')).toList();
+  }
+
+  @override
+  void didUpdateWidget(covariant RegionEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final current = widget.edits.effectiveBox(widget.region);
+    if (current == _displayedBox) return;
+    _displayedBox = current;
+    final values = [current.x, current.y, current.width, current.height];
+    for (var i = 0; i < box.length; i++) {
+      box[i].text = '${values[i]}';
+    }
+    validation = null;
   }
 
   @override
@@ -65,6 +80,7 @@ class _RegionEditorState extends State<RegionEditor> {
       return;
     }
     final candidate = RegionBox(values[0]!, values[1]!, values[2]!, values[3]!);
+    // The controller rebuild updates fields only when the canonical box changes.
     setState(() => validation = widget.onBox(candidate));
   }
 

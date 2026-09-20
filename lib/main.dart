@@ -9,6 +9,7 @@ import 'features/manga_processing/data/processing_repository.dart';
 import 'features/manga_processing/presentation/processing_controller.dart';
 import 'features/manga_processing/presentation/region_editor.dart';
 import 'features/manga_processing/presentation/region_geometry.dart';
+import 'features/manga_processing/presentation/selected_box_overlay.dart';
 import 'features/manga_processing/presentation/translation_region_overlay.dart';
 
 void main() => runApp(const MangaTranslatorApp());
@@ -422,9 +423,16 @@ class _HomePageState extends State<HomePage> {
                                     constraints.maxWidth,
                                     constraints.maxHeight,
                                   );
+                                  final chapterMode = _chapterMode;
                                   final analysis = _chapterMode
                                       ? _chapter.analysis
                                       : _controller.analysis;
+                                  final selected = _chapterMode
+                                      ? _chapter.selectedRegion
+                                      : _controller.selectedRegion;
+                                  final overlayPage = _chapterMode
+                                      ? _chapter.selectedPage
+                                      : null;
                                   final edits = _chapterMode
                                       ? _chapter.selectedPage!.edits
                                       : _controller.edits;
@@ -522,6 +530,49 @@ class _HomePageState extends State<HomePage> {
                                                     analysis.regions[index].id,
                                                   ),
                                           ),
+                                      if (analysis != null && selected != null)
+                                        SelectedBoxOverlay(
+                                          key: ValueKey(
+                                            'box-${_chapterMode ? _chapter.selectedPage!.file.path : _controller.filename}-${selected.id}',
+                                          ),
+                                          box: edits.effectiveBox(selected),
+                                          imageSize: imageSize!,
+                                          canvasSize: canvasSize,
+                                          onPreview: (box) {
+                                            if (chapterMode) {
+                                              if (_chapter
+                                                          .selectedPage
+                                                          ?.analysis ==
+                                                      analysis &&
+                                                  _chapter.selectedRegionId ==
+                                                      selected.id) {
+                                                _chapter.setBox(
+                                                  selected.id,
+                                                  box,
+                                                  persist: false,
+                                                );
+                                              }
+                                            } else if (_controller.analysis ==
+                                                    analysis &&
+                                                _controller.selectedRegionId ==
+                                                    selected.id) {
+                                              _controller.setBox(
+                                                selected.id,
+                                                box,
+                                                persist: false,
+                                              );
+                                            }
+                                          },
+                                          onCommit: () {
+                                            if (chapterMode) {
+                                              _chapter.commitBoxPreview(
+                                                overlayPage!,
+                                              );
+                                            } else {
+                                              _controller.commitBoxPreview();
+                                            }
+                                          },
+                                        ),
                                     ],
                                   );
                                 },

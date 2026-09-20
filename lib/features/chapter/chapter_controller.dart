@@ -85,6 +85,7 @@ class ChapterController extends ChangeNotifier {
   Timer? _saveDebounce;
   ChapterPage? _debouncedPage;
   bool _disposed = false;
+  final Set<ChapterPage> _boxPreviewPages = {};
   Future<void> _saveTail = Future.value();
   final Stopwatch Function() _stopwatchFactory;
   List<ChapterPage> pages = [];
@@ -120,7 +121,7 @@ class ChapterController extends ChangeNotifier {
     notifyListeners();
   }
 
-  String? setBox(String id, RegionBox box) {
+  String? setBox(String id, RegionBox box, {bool persist = true}) {
     final result = analysis;
     if (result == null || !result.regions.any((region) => region.id == id)) {
       return 'Region is unavailable.';
@@ -128,9 +129,22 @@ class ChapterController extends ChangeNotifier {
     final error = validateRegionBox(box, result);
     if (error != null) return error;
     selectedPage!.edits.setBox(id, box);
-    _scheduleSave(selectedPage!, immediate: true);
+    if (persist) {
+      _scheduleSave(selectedPage!, immediate: true);
+    } else {
+      if (_debouncedPage == selectedPage) {
+        _saveDebounce?.cancel();
+        _saveDebounce = null;
+        _debouncedPage = null;
+      }
+      _boxPreviewPages.add(selectedPage!);
+    }
     notifyListeners();
     return null;
+  }
+
+  void commitBoxPreview(ChapterPage page) {
+    if (_boxPreviewPages.remove(page)) _scheduleSave(page, immediate: true);
   }
 
   void resetBox(String id) {
@@ -242,6 +256,7 @@ class ChapterController extends ChangeNotifier {
 
   void selectPage(int index) {
     if (index < 0 || index >= pages.length) return;
+    if (selectedPage != null) commitBoxPreview(selectedPage!);
     selectedPageIndex = index;
     selectedRegionId = null;
     notifyListeners();
@@ -403,16 +418,20 @@ class ChapterController extends ChangeNotifier {
         page.fingerprint == null) {
       return Future.value();
     }
+    final fingerprint = page.fingerprint!;
+    final result = page.analysis!;
+    final savedEdits = page.edits.copy();
+    final duration = page.duration;
     _saveTail = _saveTail.then((_) async {
       try {
         await service.savePage(
           source,
           PersistedPage(
             name: page.name,
-            fingerprint: page.fingerprint!,
-            analysis: page.analysis!,
-            edits: page.edits,
-            duration: page.duration,
+            fingerprint: fingerprint,
+            analysis: result,
+            edits: savedEdits,
+            duration: duration,
           ),
         );
         saveError = null;
@@ -425,6 +444,9 @@ class ChapterController extends ChangeNotifier {
   }
 
   Future<void> flushSaves() async {
+    for (final page in _boxPreviewPages.toList()) {
+      commitBoxPreview(page);
+    }
     final timer = _saveDebounce;
     final page = _debouncedPage;
     _saveDebounce = null;

@@ -30,6 +30,7 @@ class ProcessingController extends ChangeNotifier {
   Timer? _saveDebounce;
   Future<void> _saveTail = Future.value();
   bool _disposed = false;
+  bool _boxPreviewDirty = false;
   String? error;
   ProcessingStatus status = ProcessingStatus.initial;
   String? selectedRegionId;
@@ -51,6 +52,7 @@ class ProcessingController extends ChangeNotifier {
   }
 
   void selectImage(String name, Uint8List bytes) {
+    commitBoxPreview();
     _saveDebounce?.cancel();
     _saveDebounce = null;
     _selectionVersion++;
@@ -152,7 +154,7 @@ class ProcessingController extends ChangeNotifier {
     notifyListeners();
   }
 
-  String? setBox(String id, RegionBox box) {
+  String? setBox(String id, RegionBox box, {bool persist = true}) {
     final result = analysis;
     if (result == null || !result.regions.any((region) => region.id == id)) {
       return 'Region is unavailable.';
@@ -160,9 +162,21 @@ class ProcessingController extends ChangeNotifier {
     final error = validateRegionBox(box, result);
     if (error != null) return error;
     edits.setBox(id, box);
-    _scheduleSave(immediate: true);
+    if (persist) {
+      _scheduleSave(immediate: true);
+    } else {
+      _saveDebounce?.cancel();
+      _saveDebounce = null;
+      _boxPreviewDirty = true;
+    }
     notifyListeners();
     return null;
+  }
+
+  void commitBoxPreview() {
+    if (!_boxPreviewDirty) return;
+    _boxPreviewDirty = false;
+    _scheduleSave(immediate: true);
   }
 
   void resetBox(String id) {
@@ -195,15 +209,18 @@ class ProcessingController extends ChangeNotifier {
     }
     final directory = p.dirname(file.path);
     final name = p.basename(file.path);
+    final fingerprint = sourceFingerprint!;
+    final result = analysis!;
+    final savedEdits = edits.copy();
     _saveTail = _saveTail.then((_) async {
       try {
         await service.savePage(
           directory,
           PersistedPage(
             name: name,
-            fingerprint: sourceFingerprint!,
-            analysis: analysis!,
-            edits: edits,
+            fingerprint: fingerprint,
+            analysis: result,
+            edits: savedEdits,
           ),
         );
         saveError = null;
@@ -216,6 +233,7 @@ class ProcessingController extends ChangeNotifier {
   }
 
   Future<void> flushSaves() async {
+    commitBoxPreview();
     final timer = _saveDebounce;
     _saveDebounce = null;
     if (timer?.isActive == true) {

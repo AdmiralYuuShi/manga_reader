@@ -11,6 +11,38 @@ Rect displayRectForImage(Size imageSize, Size canvasSize) {
   );
 }
 
+class ImageViewportTransform {
+  ImageViewportTransform(this.imageSize, this.canvasSize)
+    : imageRect = displayRectForImage(imageSize, canvasSize);
+
+  final Size imageSize;
+  final Size canvasSize;
+  final Rect imageRect;
+
+  Offset imageToViewport(Offset point) => Offset(
+    imageRect.left + point.dx * imageRect.width / imageSize.width,
+    imageRect.top + point.dy * imageRect.height / imageSize.height,
+  );
+
+  Offset viewportToImage(Offset point) => Offset(
+    (point.dx - imageRect.left) * imageSize.width / imageRect.width,
+    (point.dy - imageRect.top) * imageSize.height / imageRect.height,
+  );
+
+  Offset deltaViewportToImage(Offset delta) => Offset(
+    delta.dx * imageSize.width / imageRect.width,
+    delta.dy * imageSize.height / imageRect.height,
+  );
+
+  Rect boxToViewport(RegionBox box) {
+    final topLeft = imageToViewport(Offset(box.x.toDouble(), box.y.toDouble()));
+    final bottomRight = imageToViewport(
+      Offset((box.x + box.width).toDouble(), (box.y + box.height).toDouble()),
+    );
+    return Rect.fromPoints(topLeft, bottomRight);
+  }
+}
+
 Rect displayRectForRegion(
   DetectedRegion region,
   Size imageSize,
@@ -20,13 +52,5 @@ Rect displayRectForRegion(
 }
 
 Rect displayRectForBox(RegionBox box, Size imageSize, Size canvasSize) {
-  final imageRect = displayRectForImage(imageSize, canvasSize);
-  final scaleX = imageRect.width / imageSize.width;
-  final scaleY = imageRect.height / imageSize.height;
-  return Rect.fromLTWH(
-    imageRect.left + box.x * scaleX,
-    imageRect.top + box.y * scaleY,
-    box.width * scaleX,
-    box.height * scaleY,
-  );
+  return ImageViewportTransform(imageSize, canvasSize).boxToViewport(box);
 }
