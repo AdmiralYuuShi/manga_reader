@@ -7,10 +7,8 @@ import 'features/chapter/chapter_controller.dart';
 import 'features/chapter/chapter_persistence.dart';
 import 'features/manga_processing/data/processing_repository.dart';
 import 'features/manga_processing/presentation/processing_controller.dart';
+import 'features/manga_processing/presentation/manga_viewer_workspace.dart';
 import 'features/manga_processing/presentation/region_editor.dart';
-import 'features/manga_processing/presentation/region_geometry.dart';
-import 'features/manga_processing/presentation/selected_box_overlay.dart';
-import 'features/manga_processing/presentation/translation_region_overlay.dart';
 
 void main() => runApp(const MangaTranslatorApp());
 
@@ -20,20 +18,13 @@ class MangaTranslatorApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) => MaterialApp(
     title: 'Manga Translator',
-    theme: ThemeData(
-      colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
-    ),
+    theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo)),
     home: const HomePage(),
   );
 }
 
 class HomePage extends StatefulWidget {
-  const HomePage({
-    super.key,
-    this.apiClient,
-    this.controller,
-    this.chapterController,
-  });
+  const HomePage({super.key, this.apiClient, this.controller, this.chapterController});
 
   final ApiClient? apiClient;
   final ProcessingController? controller;
@@ -46,13 +37,9 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   late final ApiClient _apiClient = widget.apiClient ?? ApiClient();
   late final ProcessingController _controller =
-      widget.controller ??
-      ProcessingController(
-        ProcessingRepository(ProcessingRemoteDataSource(_apiClient)),
-      );
+      widget.controller ?? ProcessingController(ProcessingRepository(ProcessingRemoteDataSource(_apiClient)));
   late Future<HealthResponse> _health = _apiClient.getHealth();
-  late final ChapterController _chapter =
-      widget.chapterController ?? ChapterController(_controller.repository);
+  late final ChapterController _chapter = widget.chapterController ?? ChapterController(_controller.repository);
   late bool _chapterMode = _chapter.directoryPath != null;
   bool _showTranslationOverlay = true;
   bool _showDetectionBoxes = true;
@@ -60,30 +47,20 @@ class _HomePageState extends State<HomePage> {
   void _refresh() => setState(() => _health = _apiClient.getHealth());
 
   Future<void> _openImage() async {
-    const images = XTypeGroup(
-      label: 'Manga images',
-      extensions: ['jpg', 'jpeg', 'png', 'webp'],
-    );
+    const images = XTypeGroup(label: 'Manga images', extensions: ['jpg', 'jpeg', 'png', 'webp']);
     try {
       final selected = await openFile(acceptedTypeGroups: [images]);
       if (selected != null) {
         await _chapter.stopAndWait();
         setState(() => _chapterMode = false);
         if (widget.controller == null) {
-          _controller.persistence ??= ChapterPersistenceRepository(
-            await getApplicationSupportDirectory(),
-          );
+          _controller.persistence ??= ChapterPersistenceRepository(await getApplicationSupportDirectory());
         }
-        await _controller.openImageFile(
-          selected.path,
-          await selected.readAsBytes(),
-        );
+        await _controller.openImageFile(selected.path, await selected.readAsBytes());
       }
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Could not open image: $error')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not open image: $error')));
       }
     }
   }
@@ -94,17 +71,13 @@ class _HomePageState extends State<HomePage> {
       if (path == null) return;
       await _controller.flushSaves();
       if (widget.chapterController == null) {
-        _chapter.persistence ??= ChapterPersistenceRepository(
-          await getApplicationSupportDirectory(),
-        );
+        _chapter.persistence ??= ChapterPersistenceRepository(await getApplicationSupportDirectory());
       }
       await _chapter.open(path);
       if (mounted) setState(() => _chapterMode = true);
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not open chapter: $error')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not open chapter: $error')));
       }
     }
   }
@@ -116,501 +89,406 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
-  Widget _chapterToolbar() {
-    final page = _chapter.selectedPage;
-    final average = _chapter.averageDuration;
-    String estimate(Duration? value) =>
-        value == null ? 'Calculating...' : '~${formatDuration(value)}';
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Wrap(
-            spacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Text(
-                _chapter.name,
-                style: Theme.of(context).textTheme.titleMedium,
+  Widget _topActions() => SizedBox(
+    height: 52,
+    child: SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        child: Row(
+          children: [
+            FilledButton.tonalIcon(
+              onPressed: _openImage,
+              icon: const Icon(Icons.image_outlined),
+              label: const Text('Open Image'),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.tonalIcon(
+              onPressed: _openChapter,
+              icon: const Icon(Icons.folder_open_outlined),
+              label: const Text('Open Chapter'),
+            ),
+            const SizedBox(width: 16),
+            if (_chapterMode) ...[
+              FilledButton.icon(
+                onPressed: _chapter.processing || _chapter.pendingCount == 0 ? null : _chapter.processPending,
+                icon: const Icon(Icons.play_arrow),
+                label: const Text('Process Chapter'),
               ),
-              FilledButton.tonal(
-                onPressed: _chapter.processing || _chapter.pendingCount == 0
-                    ? null
-                    : _chapter.processPending,
-                child: const Text('Process Chapter'),
-              ),
-              if (_chapter.processing)
+              if (_chapter.processing) ...[
+                const SizedBox(width: 8),
                 OutlinedButton(
-                  onPressed: _chapter.stopRequested
-                      ? null
-                      : _chapter.requestStop,
-                  child: Text(
-                    _chapter.stopRequested
-                        ? 'Stopping after page...'
-                        : 'Stop After Page',
-                  ),
+                  onPressed: _chapter.stopRequested ? null : _chapter.requestStop,
+                  child: Text(_chapter.stopRequested ? 'Stopping after page...' : 'Stop After Page'),
                 ),
-              if (page?.status == ChapterPageStatus.failed &&
-                  !_chapter.processing)
+              ],
+              if (_chapter.selectedPage?.status == ChapterPageStatus.failed && !_chapter.processing) ...[
+                const SizedBox(width: 8),
                 OutlinedButton(
-                  onPressed: () =>
-                      _chapter.retryPage(_chapter.selectedPageIndex),
+                  onPressed: () => _chapter.retryPage(_chapter.selectedPageIndex),
                   child: const Text('Retry Page'),
                 ),
-              IconButton(
-                onPressed: _chapter.selectedPageIndex > 0
-                    ? () => _chapter.selectPage(_chapter.selectedPageIndex - 1)
-                    : null,
-                icon: const Icon(Icons.chevron_left),
-                tooltip: 'Previous Page',
+              ],
+            ] else
+              FilledButton.icon(
+                onPressed: _controller.imageBytes == null || _controller.status == ProcessingStatus.processing
+                    ? null
+                    : _controller.detect,
+                icon: const Icon(Icons.auto_fix_high),
+                label: const Text('Analyze Page'),
               ),
-              Text(
-                _chapter.pages.isEmpty
-                    ? 'Page 0 / 0'
-                    : 'Page ${_chapter.selectedPageIndex + 1} / ${_chapter.pages.length}',
+          ],
+        ),
+      ),
+    ),
+  );
+
+  Widget _navigationPanel(double width) {
+    final colors = Theme.of(context).colorScheme;
+    return SizedBox(
+      width: width,
+      child: ColoredBox(
+        color: colors.surfaceContainerLow,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+              child: Text('Pages', style: Theme.of(context).textTheme.titleSmall),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: ListView.builder(
+                key: const ValueKey('chapter-page-list'),
+                itemCount: _chapter.pages.length,
+                itemBuilder: (context, index) {
+                  final page = _chapter.pages[index];
+                  final icon = switch (page.status) {
+                    ChapterPageStatus.pending => Icons.radio_button_unchecked,
+                    ChapterPageStatus.processing => Icons.hourglass_top,
+                    ChapterPageStatus.completed => Icons.check_circle_outline,
+                    ChapterPageStatus.failed => Icons.error_outline,
+                  };
+                  return ListTile(
+                    key: ValueKey('chapter-page-$index'),
+                    selected: index == _chapter.selectedPageIndex,
+                    selectedTileColor: colors.primaryContainer,
+                    dense: true,
+                    leading: Icon(
+                      icon,
+                      size: 18,
+                      color: page.status == ChapterPageStatus.failed ? colors.error : colors.primary,
+                    ),
+                    title: Text(page.name, overflow: TextOverflow.ellipsis),
+                    trailing: page.edits.hasEdits
+                        ? const Tooltip(message: 'Edited', child: Icon(Icons.edit, size: 16))
+                        : page.restoredFromCache
+                        ? const Tooltip(message: 'Cached', child: Icon(Icons.cloud_done_outlined, size: 16))
+                        : null,
+                    subtitle: page.duration == null ? null : Text(formatDuration(page.duration!)),
+                    onTap: () => _chapter.selectPage(index),
+                  );
+                },
               ),
-              IconButton(
-                onPressed:
-                    _chapter.selectedPageIndex + 1 < _chapter.pages.length
-                    ? () => _chapter.selectPage(_chapter.selectedPageIndex + 1)
-                    : null,
-                icon: const Icon(Icons.chevron_right),
-                tooltip: 'Next Page',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _viewerToolbar() => SizedBox(
+    height: 48,
+    child: SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          if (_chapterMode) ...[
+            IconButton(
+              onPressed: _chapter.selectedPageIndex > 0
+                  ? () => _chapter.selectPage(_chapter.selectedPageIndex - 1)
+                  : null,
+              icon: const Icon(Icons.chevron_left),
+              tooltip: 'Previous Page',
+            ),
+            Text(
+              _chapter.pages.isEmpty
+                  ? 'Page 0 / 0'
+                  : 'Page ${_chapter.selectedPageIndex + 1} / ${_chapter.pages.length}',
+            ),
+            IconButton(
+              onPressed: _chapter.selectedPageIndex + 1 < _chapter.pages.length
+                  ? () => _chapter.selectPage(_chapter.selectedPageIndex + 1)
+                  : null,
+              icon: const Icon(Icons.chevron_right),
+              tooltip: 'Next Page',
+            ),
+            const VerticalDivider(width: 16),
+          ],
+          const SizedBox(width: 8),
+          const Tooltip(message: 'Translation Overlay', child: Icon(Icons.translate, size: 18)),
+          Switch(value: _showTranslationOverlay, onChanged: (value) => setState(() => _showTranslationOverlay = value)),
+          const SizedBox(width: 8),
+          const Tooltip(message: 'Detection Boxes', child: Icon(Icons.crop_free, size: 18)),
+          Switch(value: _showDetectionBoxes, onChanged: (value) => setState(() => _showDetectionBoxes = value)),
+        ],
+      ),
+    ),
+  );
+
+  Widget _viewer() {
+    final hasImage = _chapterMode ? _chapter.selectedPage != null : _controller.imageBytes != null;
+    final chapterMode = _chapterMode;
+    final page = chapterMode ? _chapter.selectedPage : null;
+    final analysis = chapterMode ? _chapter.analysis : _controller.analysis;
+    final selected = chapterMode ? _chapter.selectedRegion : _controller.selectedRegion;
+    final edits = chapterMode ? (page?.edits ?? _controller.edits) : _controller.edits;
+    return Column(
+      children: [
+        _viewerToolbar(),
+        const Divider(height: 1),
+        Expanded(
+          child: ColoredBox(
+            color: Theme.of(context).colorScheme.surface,
+            child: !hasImage
+                ? const Center(child: Text('Open a manga image to begin'))
+                : MangaViewerWorkspace(
+                    file: page?.file,
+                    bytes: chapterMode ? null : _controller.imageBytes,
+                    analysis: analysis,
+                    edits: edits,
+                    selectedRegion: selected,
+                    showTranslation: _showTranslationOverlay,
+                    showDetectionBoxes: _showDetectionBoxes,
+                    onSelectRegion: (id) => chapterMode ? _chapter.selectRegion(id) : _controller.selectRegion(id),
+                    onPreviewBox: (box) {
+                      if (selected == null) return;
+                      if (chapterMode) {
+                        if (_chapter.selectedPage == page && _chapter.selectedRegionId == selected.id) {
+                          _chapter.setBox(selected.id, box, persist: false);
+                        }
+                      } else if (_controller.analysis == analysis && _controller.selectedRegionId == selected.id) {
+                        _controller.setBox(selected.id, box, persist: false);
+                      }
+                    },
+                    onCommitBox: () {
+                      if (chapterMode) {
+                        _chapter.commitBoxPreview(page!);
+                      } else {
+                        _controller.commitBoxPreview();
+                      }
+                    },
+                  ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _inspector(double width) {
+    final region = _chapterMode ? _chapter.selectedRegion : _controller.selectedRegion;
+    final colors = Theme.of(context).colorScheme;
+    return SizedBox(
+      width: width,
+      child: ColoredBox(
+        color: colors.surfaceContainerLow,
+        child: Column(
+          children: [
+            SizedBox(
+              height: 48,
+              child: Row(
+                children: [
+                  const SizedBox(width: 12),
+                  Expanded(child: Text('Inspector', style: Theme.of(context).textTheme.titleSmall)),
+                  if (region != null)
+                    IconButton(
+                      onPressed: () => setState(() {
+                        _chapter.selectedRegionId = null;
+                        _controller.selectedRegionId = null;
+                      }),
+                      icon: const Icon(Icons.close),
+                      tooltip: 'Close Editor',
+                    ),
+                ],
               ),
-            ],
-          ),
-          if (_chapter.error != null)
-            Text(
-              _chapter.error!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
-          if (_chapter.cacheWarning != null)
-            Text(
-              _chapter.cacheWarning!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            const Divider(height: 1),
+            Expanded(
+              child: region == null
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(20),
+                        child: Text('Select a text region to inspect or edit it.', textAlign: TextAlign.center),
+                      ),
+                    )
+                  : RegionEditor(
+                      key: ValueKey(
+                        '${_chapterMode ? '${_chapter.directoryPath}:${_chapter.selectedPageIndex}' : _controller.filename}:${region.id}',
+                      ),
+                      region: region,
+                      analysis: _chapterMode ? _chapter.analysis! : _controller.analysis!,
+                      edits: _chapterMode ? _chapter.selectedPage!.edits : _controller.edits,
+                      onTranslation: (text) => _chapterMode
+                          ? _chapter.setTranslation(region.id, text)
+                          : _controller.setTranslation(region.id, text),
+                      onBox: (box) =>
+                          _chapterMode ? _chapter.setBox(region.id, box) : _controller.setBox(region.id, box),
+                      onResetBox: () => _chapterMode ? _chapter.resetBox(region.id) : _controller.resetBox(region.id),
+                    ),
             ),
-          if (_chapter.saveError != null)
-            Text(
-              _chapter.saveError!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _statusBar() {
+    final colors = Theme.of(context).colorScheme;
+    final messages = <Widget>[];
+    void add(String value, {bool error = false}) =>
+        messages.add(Text(value, style: TextStyle(color: error ? colors.error : colors.onSurface)));
+    if (_chapterMode) {
+      add('${_chapter.completedCount} completed / ${_chapter.pages.length} pages');
+      if (_chapter.processing) {
+        add('Processing page ${_chapter.currentPageIndex + 1} / ${_chapter.pages.length}');
+        add('Elapsed ${formatDuration(_chapter.chapterElapsed)}');
+        if (_chapter.estimatedRemaining case final remaining?) {
+          add('Remaining ~${formatDuration(remaining)}');
+        }
+      }
+      if (_chapter.selectedPage?.restoredFromCache == true) {
+        add('Cached');
+      }
+      if (_chapter.selectedPage?.edits.hasEdits == true) {
+        add('Edited');
+      }
+      if (_chapter.error != null) {
+        add(_chapter.error!, error: true);
+      }
+      if (_chapter.selectedPage?.error case final pageError?) {
+        add(pageError, error: true);
+      }
+      if (_chapter.cacheWarning != null) {
+        add(_chapter.cacheWarning!, error: true);
+      }
+      if (_chapter.saveError != null) {
+        add(_chapter.saveError!, error: true);
+      }
+    } else {
+      switch (_controller.status) {
+        case ProcessingStatus.initial:
+          if (_controller.imageBytes != null) {
+            add('Ready to analyze');
+          }
+        case ProcessingStatus.processing:
+          add('Detecting, recognizing, and translating text...');
+        case ProcessingStatus.success:
+          add('${_controller.analysis!.regions.length} regions detected');
+        case ProcessingStatus.failure:
+          add('Detection failed: ${_controller.error}', error: true);
+      }
+      if (_controller.restoredFromCache) {
+        add('Cached analysis');
+      }
+      if (_controller.edits.hasEdits) {
+        add('Edited');
+      }
+      if (_controller.cacheWarning != null) {
+        add(_controller.cacheWarning!, error: true);
+      }
+      if (_controller.saveError != null) {
+        add(_controller.saveError!, error: true);
+      }
+    }
+    return ColoredBox(
+      color: colors.surfaceContainerLow,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_chapterMode && _chapter.pages.isNotEmpty)
+            LinearProgressIndicator(value: _chapter.settledCount / _chapter.pages.length),
+          if (!_chapterMode && _controller.status == ProcessingStatus.processing) const LinearProgressIndicator(),
+          SizedBox(
+            height: 34,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  const SizedBox(width: 12),
+                  FutureBuilder<HealthResponse>(
+                    future: _health,
+                    builder: (context, snapshot) => Text(
+                      snapshot.connectionState != ConnectionState.done
+                          ? 'Checking backend...'
+                          : !snapshot.hasData
+                          ? 'Backend unavailable'
+                          : !snapshot.data!.detectorReady
+                          ? 'Detector unavailable'
+                          : !snapshot.data!.ocrReady
+                          ? 'OCR unavailable'
+                          : 'Backend ready',
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: _refresh,
+                    icon: const Icon(Icons.refresh),
+                    tooltip: 'Retry backend',
+                    iconSize: 18,
+                  ),
+                  for (final message in messages) ...[const SizedBox(width: 16), message],
+                ],
+              ),
             ),
-          if (page?.error != null)
-            Text(
-              '${page!.name}: ${page.error}',
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
-          LinearProgressIndicator(
-            value: _chapter.pages.isEmpty
-                ? 0
-                : _chapter.settledCount / _chapter.pages.length,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '${_chapter.completedCount} completed / ${_chapter.pages.length} pages, '
-            '${_chapter.pages.where((p) => p.status == ChapterPageStatus.failed).length} failed',
-          ),
-          if (_chapter.currentPageIndex >= 0)
-            Text(
-              'Processing page ${_chapter.currentPageIndex + 1} / ${_chapter.pages.length} '
-              '• Page elapsed: ${formatDuration(_chapter.pageElapsed)} '
-              '• Page estimate: ${estimate(average)} '
-              '• Page remaining: ${estimate(_chapter.pageRemaining)}',
-            ),
-          Text(
-            'Chapter elapsed: ${formatDuration(_chapter.chapterElapsed)} '
-            '• Estimated remaining: ${estimate(_chapter.estimatedRemaining)} '
-            '• Estimated total: ${estimate(_chapter.estimatedTotal)}',
           ),
         ],
       ),
     );
   }
 
-  Widget _pageList() => SizedBox(
-    width: 190,
-    child: ListView.builder(
-      itemCount: _chapter.pages.length,
-      itemBuilder: (context, index) {
-        final page = _chapter.pages[index];
-        final icon = switch (page.status) {
-          ChapterPageStatus.pending => Icons.radio_button_unchecked,
-          ChapterPageStatus.processing => Icons.hourglass_top,
-          ChapterPageStatus.completed => Icons.check_circle,
-          ChapterPageStatus.failed => Icons.error,
-        };
-        return ListTile(
-          selected: index == _chapter.selectedPageIndex,
-          dense: true,
-          leading: Icon(icon, size: 18),
-          title: Text(page.name, overflow: TextOverflow.ellipsis),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (page.restoredFromCache)
-                const Tooltip(
-                  message: 'Cached',
-                  child: Icon(Icons.cloud_done_outlined, size: 16),
-                ),
-              if (page.edits.hasEdits)
-                const Tooltip(
-                  message: 'Edited',
-                  child: Icon(Icons.edit, size: 16),
-                ),
-            ],
-          ),
-          subtitle: page.duration == null
-              ? null
-              : Text(formatDuration(page.duration!)),
-          onTap: () => _chapter.selectPage(index),
+  Widget _workspace() => LayoutBuilder(
+    builder: (context, constraints) {
+      final width = constraints.maxWidth;
+      final narrow = width < 640;
+      final inspectorWidth = width >= 1100
+          ? 320.0
+          : width >= 800
+          ? 260.0
+          : 230.0;
+      if (narrow) {
+        return Column(
+          children: [
+            Expanded(child: _viewer()),
+            const Divider(height: 1),
+            SizedBox(height: (constraints.maxHeight * 0.42).clamp(160.0, 260.0), child: _inspector(width)),
+          ],
         );
-      },
-    ),
+      }
+      return Row(
+        children: [
+          if (_chapterMode) ...[_navigationPanel(width >= 1000 ? 190 : 150), const VerticalDivider(width: 1)],
+          Expanded(child: _viewer()),
+          const VerticalDivider(width: 1),
+          _inspector(inspectorWidth),
+        ],
+      );
+    },
   );
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Manga Translator')),
-    body: Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(8),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                FilledButton(
-                  onPressed: _openImage,
-                  child: const Text('Open Image'),
-                ),
-                const SizedBox(width: 8),
-                AnimatedBuilder(
-                  animation: _controller,
-                  builder: (context, _) => FilledButton.tonal(
-                    onPressed:
-                        _chapterMode ||
-                            _controller.imageBytes == null ||
-                            _controller.status == ProcessingStatus.processing
-                        ? null
-                        : _controller.detect,
-                    child: const Text('Analyze Page'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Tooltip(
-                  message: 'Show translated text over detected regions',
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text('Translation Overlay'),
-                      Switch(
-                        value: _showTranslationOverlay,
-                        onChanged: (value) =>
-                            setState(() => _showTranslationOverlay = value),
-                      ),
-                    ],
-                  ),
-                ),
-                Tooltip(
-                  message: 'Show detected region boxes',
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text('Detection Boxes'),
-                      Switch(
-                        value: _showDetectionBoxes,
-                        onChanged: (value) =>
-                            setState(() => _showDetectionBoxes = value),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: _openChapter,
-                  child: const Text('Open Chapter'),
-                ),
-                const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: () {
-                    setState(() {
-                      _chapter.selectedRegionId = null;
-                      _controller.selectedRegionId = null;
-                    });
-                  },
-                  child: const Text('Close Editor'),
-                ),
-                const SizedBox(width: 16),
-                FutureBuilder<HealthResponse>(
-                  future: _health,
-                  builder: (context, snapshot) => Text(
-                    snapshot.connectionState != ConnectionState.done
-                        ? 'Checking backend...'
-                        : !snapshot.hasData
-                        ? 'Backend unavailable'
-                        : !snapshot.data!.detectorReady
-                        ? 'Detector unavailable'
-                        : !snapshot.data!.ocrReady
-                        ? 'OCR unavailable'
-                        : 'Backend ready',
-                  ),
-                ),
-                IconButton(
-                  onPressed: _refresh,
-                  icon: const Icon(Icons.refresh),
-                  tooltip: 'Retry backend',
-                ),
-              ],
-            ),
-          ),
-        ),
-        Expanded(
-          child: AnimatedBuilder(
-            animation: Listenable.merge([_controller, _chapter]),
-            builder: (context, _) => Column(
-              children: [
-                if (_chapterMode) _chapterToolbar(),
-                if (!_chapterMode &&
-                    _controller.status == ProcessingStatus.processing)
-                  const LinearProgressIndicator(),
-                if (!_chapterMode &&
-                    _controller.status == ProcessingStatus.processing)
-                  const Text('Detecting, recognizing, and translating text...'),
-                if (!_chapterMode &&
-                    _controller.status == ProcessingStatus.failure)
-                  Text(
-                    'Detection failed: ${_controller.error}',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                  ),
-                if (!_chapterMode &&
-                    _controller.status == ProcessingStatus.success)
-                  Text(
-                    '${_controller.analysis!.regions.length} regions detected',
-                  ),
-                if (!_chapterMode && _controller.restoredFromCache)
-                  const Text('Cached analysis'),
-                if (!_chapterMode && _controller.cacheWarning != null)
-                  Text(
-                    _controller.cacheWarning!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                  ),
-                if (!_chapterMode && _controller.saveError != null)
-                  Text(
-                    _controller.saveError!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                  ),
-                Expanded(
-                  child: Row(
-                    children: [
-                      if (_chapterMode) _pageList(),
-                      Expanded(
-                        child:
-                            (_chapterMode
-                                ? _chapter.selectedPage == null
-                                : _controller.imageBytes == null)
-                            ? const Center(
-                                child: Text('Open a manga image to begin'),
-                              )
-                            : LayoutBuilder(
-                                builder: (context, constraints) {
-                                  final canvasSize = Size(
-                                    constraints.maxWidth,
-                                    constraints.maxHeight,
-                                  );
-                                  final chapterMode = _chapterMode;
-                                  final analysis = _chapterMode
-                                      ? _chapter.analysis
-                                      : _controller.analysis;
-                                  final selected = _chapterMode
-                                      ? _chapter.selectedRegion
-                                      : _controller.selectedRegion;
-                                  final overlayPage = _chapterMode
-                                      ? _chapter.selectedPage
-                                      : null;
-                                  final edits = _chapterMode
-                                      ? _chapter.selectedPage!.edits
-                                      : _controller.edits;
-                                  final imageSize = analysis == null
-                                      ? null
-                                      : Size(
-                                          analysis.width.toDouble(),
-                                          analysis.height.toDouble(),
-                                        );
-                                  final imageRect = imageSize == null
-                                      ? null
-                                      : displayRectForImage(
-                                          imageSize,
-                                          canvasSize,
-                                        );
-                                  final detectorRects = analysis == null
-                                      ? <Rect>[]
-                                      : [
-                                          for (final region in analysis.regions)
-                                            displayRectForRegion(
-                                              region,
-                                              imageSize!,
-                                              canvasSize,
-                                            ),
-                                        ];
-                                  return Stack(
-                                    children: [
-                                      Positioned.fill(
-                                        child: _chapterMode
-                                            ? Image.file(
-                                                _chapter.selectedPage!.file,
-                                                fit: BoxFit.contain,
-                                                errorBuilder:
-                                                    (
-                                                      context,
-                                                      error,
-                                                      stack,
-                                                    ) => Center(
-                                                      child: Text(
-                                                        'Could not display image: $error',
-                                                      ),
-                                                    ),
-                                              )
-                                            : Image.memory(
-                                                _controller.imageBytes!,
-                                                fit: BoxFit.contain,
-                                              ),
-                                      ),
-                                      if (analysis != null)
-                                        for (
-                                          var index = 0;
-                                          index < analysis.regions.length;
-                                          index++
-                                        )
-                                          TranslationRegionOverlay(
-                                            region: analysis.regions[index],
-                                            rect: detectorRects[index],
-                                            translationRect: displayRectForBox(
-                                              edits.effectiveBox(
-                                                analysis.regions[index],
-                                              ),
-                                              imageSize!,
-                                              canvasSize,
-                                            ),
-                                            editedTranslatedText: edits
-                                                .forRegion(
-                                                  analysis.regions[index].id,
-                                                )
-                                                .translatedText,
-                                            imageRect: imageRect!,
-                                            obstacles: [
-                                              for (
-                                                var other = 0;
-                                                other < detectorRects.length;
-                                                other++
-                                              )
-                                                if (other != index)
-                                                  detectorRects[other],
-                                            ],
-                                            selected:
-                                                (_chapterMode
-                                                    ? _chapter.selectedRegionId
-                                                    : _controller
-                                                          .selectedRegionId) ==
-                                                analysis.regions[index].id,
-                                            showTranslation:
-                                                _showTranslationOverlay,
-                                            showDetectionBox:
-                                                _showDetectionBoxes,
-                                            onTap: () => _chapterMode
-                                                ? _chapter.selectRegion(
-                                                    analysis.regions[index].id,
-                                                  )
-                                                : _controller.selectRegion(
-                                                    analysis.regions[index].id,
-                                                  ),
-                                          ),
-                                      if (analysis != null && selected != null)
-                                        SelectedBoxOverlay(
-                                          key: ValueKey(
-                                            'box-${_chapterMode ? _chapter.selectedPage!.file.path : _controller.filename}-${selected.id}',
-                                          ),
-                                          box: edits.effectiveBox(selected),
-                                          imageSize: imageSize!,
-                                          canvasSize: canvasSize,
-                                          onPreview: (box) {
-                                            if (chapterMode) {
-                                              if (_chapter
-                                                          .selectedPage
-                                                          ?.analysis ==
-                                                      analysis &&
-                                                  _chapter.selectedRegionId ==
-                                                      selected.id) {
-                                                _chapter.setBox(
-                                                  selected.id,
-                                                  box,
-                                                  persist: false,
-                                                );
-                                              }
-                                            } else if (_controller.analysis ==
-                                                    analysis &&
-                                                _controller.selectedRegionId ==
-                                                    selected.id) {
-                                              _controller.setBox(
-                                                selected.id,
-                                                box,
-                                                persist: false,
-                                              );
-                                            }
-                                          },
-                                          onCommit: () {
-                                            if (chapterMode) {
-                                              _chapter.commitBoxPreview(
-                                                overlayPage!,
-                                              );
-                                            } else {
-                                              _controller.commitBoxPreview();
-                                            }
-                                          },
-                                        ),
-                                    ],
-                                  );
-                                },
-                              ),
-                      ),
-                    ],
-                  ),
-                ),
-                if ((_chapterMode
-                        ? _chapter.selectedRegion
-                        : _controller.selectedRegion)
-                    case final region?)
-                  RegionEditor(
-                    key: ValueKey(
-                      '${_chapterMode ? '${_chapter.directoryPath}:${_chapter.selectedPageIndex}' : _controller.filename}:${region.id}',
-                    ),
-                    region: region,
-                    analysis: _chapterMode
-                        ? _chapter.analysis!
-                        : _controller.analysis!,
-                    edits: _chapterMode
-                        ? _chapter.selectedPage!.edits
-                        : _controller.edits,
-                    onTranslation: (text) => _chapterMode
-                        ? _chapter.setTranslation(region.id, text)
-                        : _controller.setTranslation(region.id, text),
-                    onBox: (box) => _chapterMode
-                        ? _chapter.setBox(region.id, box)
-                        : _controller.setBox(region.id, box),
-                    onResetBox: () => _chapterMode
-                        ? _chapter.resetBox(region.id)
-                        : _controller.resetBox(region.id),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ],
+    // No Need Appbar
+    // appBar: AppBar(title: const Text('Manga Translator')),
+    body: AnimatedBuilder(
+      animation: Listenable.merge([_controller, _chapter]),
+      builder: (context, _) => Column(
+        children: [
+          _topActions(),
+          const Divider(height: 1),
+          Expanded(child: _workspace()),
+          const Divider(height: 1),
+          _statusBar(),
+        ],
+      ),
     ),
   );
 }

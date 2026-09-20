@@ -1922,8 +1922,9 @@ M0 → M1 → M2 → M3 → M4 → M7 → M5 → M6
    → M11 → M15 → M12 → M16 → M17 → M13 → M14 → V1 Release
 ```
 
-Current NEXT milestone: **M15 — Processing Performance Optimization**.
-M11 is complete. M12, M16, M17, M13, and M14 remain PLANNED.
+Current NEXT milestone: **M16 — Manga Font Selection**.
+M12 is complete following successful manual validation. M15 Phase A profiling
+and Phase B GPU enablement are complete. M17, M13, and M14 remain PLANNED.
 
 ### M11 — Interactive Text Box Move & Resize (COMPLETE)
 
@@ -1934,19 +1935,31 @@ a second geometry model. The detector bbox remains immutable. M4 renders from
 effective geometry, and M6 persists the same override. Detailed interaction
 requirements belong to the dedicated M11 task.
 
-### M15 — Processing Performance Optimization (NEXT)
+### M15 — Processing Performance Optimization (COMPLETE)
 
-Observed processing is approximately 1 minute 40 seconds per image, making a
-20–30 page chapter roughly 30–50+ minutes. Profile image I/O/preparation,
-detection, OCR, translation, and other overhead before changing behavior.
-Investigate actual GPU use, model/device settings, image conversions,
-preprocessing/inference cost, OCR crops and safe batching, MyMemory latency,
-deduplication, translation caching, and only then bounded pipeline overlap.
-Do not process all chapter pages concurrently by default. Respect GPU/memory
-limits, preserve detection/OCR quality and M6 cache validity, and report
-before/after timing by pipeline stage.
+Phase A — Profiling / Baseline / Investigation: **COMPLETE**. See
+`backend/PERFORMANCE.md` for the measured CPU baseline, stage definitions,
+runtime/device findings, benchmark procedure, and Phase B validation.
+The Phase A Codex run did not measure translation; the user later supplied a
+CPU translated client median. Profiling does not change analysis or cache
+versions.
 
-### M12 — Manga Reader UI Refactor (PLANNED)
+Phase B — GPU Enablement / Benchmark: **COMPLETE**. The local virtual
+environment has torch 2.5.1+cu124 and torchvision 0.20.1+cu124. Manual
+validation confirmed CUDA detector inference, manga-ocr on cuda:0, no OOM,
+and 8/8 OCR regions on a representative page. Initial GPU backend inference
+was about 1.436 s; additional untranslated client requests had a 0.966 s
+median. Flutter end-to-end processing is about 15–20 s per page and is
+acceptable for V1. See `backend/PERFORMANCE.md` for timing scope and limits.
+
+GPU acceleration is the M15 optimization adopted for V1. Translation and
+network optimization, translation concurrency, OCR batching, chapter
+parallelism, FP16, quantization, detector resolution reduction, model
+unloading/reloading, and further GPU memory optimization are deferred
+technical debt, not blockers. Preserve detector/OCR quality and M6 cache
+semantics if any are revisited later.
+
+### M12 — Manga Reader UI Refactor (COMPLETE)
 
 Replace the developer-oriented control-heavy layout with a viewer-centered
 desktop reader/editor. Aim for left chapter/page navigation, center manga viewer
@@ -1958,7 +1971,14 @@ M17 through `ThemeData`, `ColorScheme`, and `Theme.of(context)` instead of
 scattered hard-coded chrome colors. Application themes must not alter manga
 image pixels.
 
-### M16 — Manga Font Selection (PLANNED)
+The desktop reader now has a compact action bar and status area, chapter page
+navigation, a shared single-page/chapter viewer, and a selected-region inspector.
+The existing translation overlay, text and geometry edits, direct box handles,
+chapter processing, and persisted edits remain available. Automated Flutter
+tests, static analysis, and the Windows build pass. The user completed manual
+Windows reader validation successfully with no issues or regressions found.
+
+### M16 — Manga Font Selection (NEXT)
 
 Offer a curated, global manga/comic overlay font preference, persisted across
 restarts. Candidate fonts include Comic Neue (initial recommendation), Patrick

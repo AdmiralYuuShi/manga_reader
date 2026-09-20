@@ -7,6 +7,27 @@ The Windows Flutter app connects to a local FastAPI backend for manga text detec
 1. Set up and start the backend using [backend/README.md](backend/README.md).
 2. In another PowerShell window, run `flutter run -d windows` from this directory.
 
+## Reader workspace (Milestone 12)
+
+The Windows workspace keeps the manga page in the center. In chapter mode, the
+left page list shows selection, processing state, cache hits, and edits; the
+page arrows remain available when the window is too narrow for that list.
+Select a text region to open its source, machine translation, translation
+override, and original-pixel geometry in the right inspector. On narrow
+windows the inspector moves below the viewer. The bottom strip shows backend,
+processing, cache, edit, and error status without covering the page. The
+translation and detector-box switches sit above the viewer.
+
+M12 manual validation passed with no issues or regressions. The checklist was:
+open one image, analyze it, select a region, edit its translation,
+drag and resize its box, then change X/Y/Width/Height numerically and confirm
+each change appears on the page. Reopen the image to check saved edits. Open a
+chapter, navigate with the left list and page arrows, process pending pages,
+and check progress, page status, and page-scoped selection. Resize the window;
+check that controls stay usable and boxes stay aligned. View light and dark
+application chrome and confirm manga pixels remain unchanged. Restart and
+reopen the same image or chapter to check cached results and edits.
+
 ## Chapter processing (Milestone 7)
 
 **Open Chapter** selects a folder. Direct child JPEG, PNG, and WebP files are
@@ -22,12 +43,10 @@ pages pending. **Process Chapter** resumes those pending pages during the
 current session. Opening a new chapter clears the current viewer state; valid
 saved results are restored when that chapter is opened again.
 
-The status area shows live page and chapter elapsed time, final durations for
-processed pages, and approximate remaining and total time. Estimates initially
-show Calculating. After a successful page, they use the last five successful
-page durations (or fewer if only fewer exist); failed pages are excluded.
-Current page remaining time is clamped to zero when it exceeds the average.
-Chapter elapsed time covers each processing run and stops when that run ends.
+The compact status strip shows completed-page progress, the current page,
+elapsed time, and an approximate remaining time while processing. Page-list
+durations show completed runs. Estimates use the last five successful page
+durations (or fewer when fewer exist); failed pages are excluded.
 Milestone 7 was intentionally prioritized before editing (M5) and persistence
 (M6) to establish Chapter → Page → Region first.
 
