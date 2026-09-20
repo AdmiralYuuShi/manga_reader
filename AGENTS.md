@@ -12,7 +12,8 @@ The application is intended to:
 4. Translate the extracted Japanese text.
 5. Display translations as overlays on top of the original manga page.
 6. Cache OCR and translation results so pages do not need to be processed repeatedly.
-7. Eventually support batch chapter processing, manual correction, text removal/inpainting, translated lettering, and export.
+7. Process chapters, preserve analysis and user edits, and support a practical desktop reader/editor in Version 1.
+8. Add text removal/inpainting, automatic lettering, and export in Version 2.
 
 The initial implementation should prioritize:
 
@@ -111,8 +112,8 @@ The application follows a client/backend architecture.
 │ Manga Reader                         │
 │ Image Import                         │
 │ Translation Overlay                  │
-│ OCR Result Editor                    │
-│ Translation Editor                   │
+│ Region Inspector                     │
+│ Translation / Geometry Editor        │
 │ Settings                             │
 └──────────────────┬───────────────────┘
                    │
@@ -1296,7 +1297,7 @@ Flutter. M6 persists successful page analysis and user overrides.
 
 ---
 
-# 38. Future Text Removal
+# 38. Version 2 Text Removal
 
 comic-text-detector may provide masks useful for text removal.
 
@@ -1318,7 +1319,7 @@ Do not implement inpainting during the initial OCR MVP.
 
 ---
 
-# 39. Future Lettering
+# 39. Version 2 Lettering
 
 Eventually translated text may be rendered directly into speech bubbles.
 
@@ -1355,7 +1356,7 @@ Do not mix these responsibilities into OCR services.
 
 ---
 
-# 40. Future Export
+# 40. Version 2 Export
 
 Potential export formats:
 
@@ -1842,6 +1843,8 @@ A complete chapter can be processed without manually selecting every page.
 
 ## Milestone 8 — Text Removal / Inpainting
 
+Status: DEFERRED TO VERSION 2. Do not implement during Version 1.
+
 Goal:
 
 Remove original Japanese lettering.
@@ -1858,6 +1861,8 @@ Do not start this milestone before detection coordinates and masks are reliable.
 ---
 
 ## Milestone 9 — Automatic Lettering
+
+Status: DEFERRED TO VERSION 2. Do not implement during Version 1.
 
 Goal:
 
@@ -1878,6 +1883,8 @@ This is a separate concern from translation.
 
 ## Milestone 10 — Export
 
+Status: DEFERRED TO VERSION 2. Do not implement during Version 1.
+
 Goal:
 
 Produce shareable translated manga.
@@ -1894,41 +1901,120 @@ Original files must remain untouched.
 
 # 53. Current Priority
 
-Milestone numbers group features; they do not require implementation in numeric order.
-M0, M1, M2, M3, M4, M7, M5, and M6 are COMPLETE. M8 is NEXT.
-M9 and M10 are PLANNED.
+Milestone numbers identify feature groups, not chronological implementation order.
+M0, M1, M2, M3, M4, M7, M5, and M6 are COMPLETE and have been manually
+validated through M6. M6 includes persistent generated analysis and M5
+overrides, SHA-256 source validation, cache invalidation, autosave, and cached
+Open Chapter/Open Image restoration without backend analysis when valid.
 
-Execution priority is:
+## Version 1 — Practical desktop manga translation reader/editor
 
-```text
-M0 → M1 → M2 → M3 → M4 → M7 → M5 → M6 → M8 → M9 → M10
-```
+Version 1 prioritizes reliable detection/OCR/translation, usable overlays,
+manual correction, direct text-box editing, acceptable processing time, a
+reader-oriented UI, global font and appearance preferences, recursive chapter
+organization, a persistent translated-content library, and reliable cache.
+It does not require a cleaned or typeset scanlation image.
 
-M7 comes before M5 and M6 to establish Chapter → Page → Region before
-editing and persistence are designed around those entities. M5 editing will
-operate on Chapter → Page → Region. M6 persists generated analysis and M5 edits
-for those entities. M7 originally kept state in memory; M6 added persistence.
-
-M7 reuses the existing per-page detection, OCR, and translation pipeline through
-`POST /api/v1/pages/analyze`. Do not duplicate those implementations. Detector
-and OCR models load once at backend startup and are reused across pages.
-Correctness and bounded resource usage take priority over throughput: process
-pages sequentially by default, never the whole chapter concurrently. A failed
-page must not invalidate completed pages or prevent later pages from running.
-
-Current objective: plan M8 text removal/inpainting. Do not start it without a
-specific request. M6 persistence is complete.
-
-Do not begin:
+Completed and planned Version 1 execution order:
 
 ```text
-inpainting
-automatic lettering
-mobile deployment
-cloud deployment
+M0 → M1 → M2 → M3 → M4 → M7 → M5 → M6
+   → M11 → M15 → M12 → M16 → M17 → M13 → M14 → V1 Release
 ```
 
-before the core detection/OCR/translation pipeline works reliably.
+Current NEXT milestone: **M11 — Interactive Text Box Move & Resize**.
+M15 follows M11. M12, M16, M17, M13, and M14 remain PLANNED. Do not start
+M11 merely because this roadmap was updated; use its dedicated task.
+
+### M11 — Interactive Text Box Move & Resize (NEXT)
+
+Add selected-box move and resize handles in the manga viewer. Keep edited
+geometry in original-image pixels and within image bounds. Numeric M5 inputs
+and direct manipulation must use the same canonical edited box; do not create
+a second geometry model. The detector bbox remains immutable. M4 renders from
+effective geometry, and M6 persists the same override. Detailed interaction
+requirements belong to the dedicated M11 task.
+
+### M15 — Processing Performance Optimization (PLANNED; after M11)
+
+Observed processing is approximately 1 minute 40 seconds per image, making a
+20–30 page chapter roughly 30–50+ minutes. Profile image I/O/preparation,
+detection, OCR, translation, and other overhead before changing behavior.
+Investigate actual GPU use, model/device settings, image conversions,
+preprocessing/inference cost, OCR crops and safe batching, MyMemory latency,
+deduplication, translation caching, and only then bounded pipeline overlap.
+Do not process all chapter pages concurrently by default. Respect GPU/memory
+limits, preserve detection/OCR quality and M6 cache validity, and report
+before/after timing by pipeline stage.
+
+### M12 — Manga Reader UI Refactor (PLANNED)
+
+Replace the developer-oriented control-heavy layout with a viewer-centered
+desktop reader/editor. Aim for left chapter/page navigation, center manga viewer
+with M4 overlay and M11 controls, right selected-region inspector with source,
+translation and geometry editing, a compact processing/cache/edit status area,
+and minimal high-level actions at the top. Prepare extension points for M14
+without implementing the library. Establish theme-aware UI foundations for
+M17 through `ThemeData`, `ColorScheme`, and `Theme.of(context)` instead of
+scattered hard-coded chrome colors. Application themes must not alter manga
+image pixels.
+
+### M16 — Manga Font Selection (PLANNED)
+
+Offer a curated, global manga/comic overlay font preference, persisted across
+restarts. Candidate fonts include Comic Neue (initial recommendation), Patrick
+Hand, Kalam, Schoolbell, Short Stack, Coming Soon, Bangers, Bowlby One SC,
+Luckiest Guy, and Permanent Marker. Verify availability, licensing, and package
+compatibility during M16. Prefer bundled assets for offline use. Do not add
+per-region font choice or M9 automatic lettering in M16.
+
+### M17 — Light / Dark Mode (PLANNED)
+
+Support persisted System, Light, and Dark appearance settings; default to
+System. Use Flutter theme architecture. Dark mode changes application chrome
+only: preserve source image pixels, brightness, contrast, and stored images.
+M12 should prepare for this without another major layout rewrite.
+
+### M13 — Recursive Folder / Subfolder Processing (PLANNED)
+
+Extend direct-child chapter import to nested source folders while preserving
+meaningful Folder/Manga Root → Chapter/Subfolder → Page → Region hierarchy.
+Do not flatten all images into one chapter. Discover folders safely, retain
+natural order within each chapter, and keep M6 persistence compatible. Define
+detailed hierarchy behavior in the M13 task.
+
+### M14 — Translation Library / Tree View (PLANNED; final major V1 feature)
+
+Provide a persistent tree of known manga roots, chapters, folders, and pages,
+including cached, partially processed, pending, and edited states where actual
+data supports them. Build on M6 persistence, M12 UI structure, and M13 folder
+hierarchy. Design indexing and library behavior in the M14 task; do not
+implement it as a side effect of M12 or M13.
+
+## Version 2 — Image cleanup, lettering, and export
+
+M8 Text Removal/Inpainting, M9 Automatic Lettering, and M10 Export are
+DEFERRED TO VERSION 2, not cancelled. Their intended pipeline is:
+
+```text
+Original manga → M8 text removal → cleaned image
+              → M9 lettering → final render → M10 export
+```
+
+M4 translation overlays remain Version 1's presentation mechanism. Do not
+implement M8–M10 or add their dependencies during Version 1 unless explicitly
+approved. Preserve the architectural notes for them above.
+
+## Architecture to carry forward
+
+Keep Flutter as frontend and Python FastAPI as the processing backend. Reuse
+`POST /api/v1/pages/analyze`; detector and OCR models load once and are reused.
+Maintain Chapter → Page → Region, per-page failure isolation, original-image
+coordinates, immutable detector bbox/OCR text/machine translation, and separate
+non-destructive M5 overrides. M6 persists generated analysis separately from
+edits and validates source fingerprints. Original manga files remain untouched.
+M4 overlays are presentation-only. Valid cached pages must not trigger
+unnecessary backend analysis. Prioritize correctness and bounded resources.
 
 ---
 
