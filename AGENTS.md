@@ -701,7 +701,7 @@ Do not assume the image always fills its widget exactly.
 
 # 18. Internal Page Metadata
 
-Processed results should eventually be persisted.
+Processed results are persisted by M6 in versioned JSON under application-support storage.
 
 Recommended representation:
 
@@ -1186,7 +1186,7 @@ total_ms
 
 # 34. Caching
 
-OCR results should eventually be cached.
+Page analysis results are cached by M6 when the source image hash matches.
 
 A simple cache key may be derived from:
 
@@ -1292,7 +1292,7 @@ keep results in memory
 ```
 
 Progress, page status, elapsed time, and approximate ETA are observable from
-Flutter. M6 will add persistence later.
+Flutter. M6 persists successful page analysis and user overrides.
 
 ---
 
@@ -1759,7 +1759,7 @@ Effective translation is the edited text when present (including an intentional
 empty string), otherwise the machine translation. Effective base geometry is
 the edited box when present, otherwise the detector box. M4 automatic expansion
 starts from the effective base box; Detection Boxes show the original detector
-box. M6 will persist generated data and overrides. M9 should consume effective
+box. M6 persists generated data and overrides. M9 should consume effective
 text and geometry where appropriate. M5 state is in memory only.
 
 Definition of done:
@@ -1772,7 +1772,21 @@ Users can edit translation and translation placement without reprocessing.
 
 Goal:
 
-Avoid repeated processing.
+Restore valid generated chapter analysis and non-destructive M5 user overrides
+across application restarts without repeating detection, OCR, or translation.
+
+Persistence principles:
+
+- Keep generated detector/OCR/machine translation data distinct from user edits.
+- Preserve original generated values and optional M5 overrides separately.
+- Validate persisted analysis against each source image before displaying it.
+- Never silently show stale analysis or migrate edits to changed image regions.
+- Treat user edits more carefully than disposable generated cache.
+- Use explicit persistence and analysis-cache schema versions.
+- Write metadata atomically where practical and report save failures.
+- Load valid results without requiring the Python backend.
+- Store metadata in Flutter application-support storage, not source chapters.
+- Never modify or duplicate source manga images.
 
 Tasks:
 
@@ -1881,8 +1895,8 @@ Original files must remain untouched.
 # 53. Current Priority
 
 Milestone numbers group features; they do not require implementation in numeric order.
-M0, M1, M2, M3, M4, M7, and M5 are COMPLETE. M6 is NEXT.
-M8, M9, and M10 are PLANNED.
+M0, M1, M2, M3, M4, M7, M5, and M6 are COMPLETE. M8 is NEXT.
+M9 and M10 are PLANNED.
 
 Execution priority is:
 
@@ -1892,8 +1906,8 @@ M0 → M1 → M2 → M3 → M4 → M7 → M5 → M6 → M8 → M9 → M10
 
 M7 comes before M5 and M6 to establish Chapter → Page → Region before
 editing and persistence are designed around those entities. M5 editing will
-operate on Chapter → Page → Region. M6 will persist that state and its results.
-M7 itself does not persist data.
+operate on Chapter → Page → Region. M6 persists generated analysis and M5 edits
+for those entities. M7 originally kept state in memory; M6 added persistence.
 
 M7 reuses the existing per-page detection, OCR, and translation pipeline through
 `POST /api/v1/pages/analyze`. Do not duplicate those implementations. Detector
@@ -1902,8 +1916,8 @@ Correctness and bounded resource usage take priority over throughput: process
 pages sequentially by default, never the whole chapter concurrently. A failed
 page must not invalidate completed pages or prevent later pages from running.
 
-Current objective: design M6 persistence for generated page analysis and
-M5 user overrides across Chapter → Page → Region. M6 is not implemented yet.
+Current objective: plan M8 text removal/inpainting. Do not start it without a
+specific request. M6 persistence is complete.
 
 Do not begin:
 

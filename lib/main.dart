@@ -1,8 +1,10 @@
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'core/api/api_client.dart';
 import 'features/chapter/chapter_controller.dart';
+import 'features/chapter/chapter_persistence.dart';
 import 'features/manga_processing/data/processing_repository.dart';
 import 'features/manga_processing/presentation/processing_controller.dart';
 import 'features/manga_processing/presentation/region_editor.dart';
@@ -66,7 +68,15 @@ class _HomePageState extends State<HomePage> {
       if (selected != null) {
         await _chapter.stopAndWait();
         setState(() => _chapterMode = false);
-        _controller.selectImage(selected.name, await selected.readAsBytes());
+        if (widget.controller == null) {
+          _controller.persistence ??= ChapterPersistenceRepository(
+            await getApplicationSupportDirectory(),
+          );
+        }
+        await _controller.openImageFile(
+          selected.path,
+          await selected.readAsBytes(),
+        );
       }
     } catch (error) {
       if (mounted) {
@@ -81,6 +91,12 @@ class _HomePageState extends State<HomePage> {
     try {
       final path = await getDirectoryPath(confirmButtonText: 'Open Chapter');
       if (path == null) return;
+      await _controller.flushSaves();
+      if (widget.chapterController == null) {
+        _chapter.persistence ??= ChapterPersistenceRepository(
+          await getApplicationSupportDirectory(),
+        );
+      }
       await _chapter.open(path);
       if (mounted) setState(() => _chapterMode = true);
     } catch (error) {
@@ -168,6 +184,16 @@ class _HomePageState extends State<HomePage> {
               _chapter.error!,
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
+          if (_chapter.cacheWarning != null)
+            Text(
+              _chapter.cacheWarning!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          if (_chapter.saveError != null)
+            Text(
+              _chapter.saveError!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
           if (page?.error != null)
             Text(
               '${page!.name}: ${page.error}',
@@ -217,9 +243,21 @@ class _HomePageState extends State<HomePage> {
           dense: true,
           leading: Icon(icon, size: 18),
           title: Text(page.name, overflow: TextOverflow.ellipsis),
-          trailing: page.edits.hasEdits
-              ? const Icon(Icons.edit, size: 16)
-              : null,
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (page.restoredFromCache)
+                const Tooltip(
+                  message: 'Cached',
+                  child: Icon(Icons.cloud_done_outlined, size: 16),
+                ),
+              if (page.edits.hasEdits)
+                const Tooltip(
+                  message: 'Edited',
+                  child: Icon(Icons.edit, size: 16),
+                ),
+            ],
+          ),
           subtitle: page.duration == null
               ? null
               : Text(formatDuration(page.duration!)),
@@ -349,6 +387,22 @@ class _HomePageState extends State<HomePage> {
                     _controller.status == ProcessingStatus.success)
                   Text(
                     '${_controller.analysis!.regions.length} regions detected',
+                  ),
+                if (!_chapterMode && _controller.restoredFromCache)
+                  const Text('Cached analysis'),
+                if (!_chapterMode && _controller.cacheWarning != null)
+                  Text(
+                    _controller.cacheWarning!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                if (!_chapterMode && _controller.saveError != null)
+                  Text(
+                    _controller.saveError!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
                   ),
                 Expanded(
                   child: Row(

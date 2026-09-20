@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:crypto/crypto.dart';
 
+import 'chapter_persistence.dart';
 import '../manga_processing/data/processing_repository.dart';
 import '../manga_processing/domain/page_analysis.dart';
 import '../manga_processing/domain/region_edits.dart';
@@ -16,6 +18,8 @@ class ChapterPage {
   ChapterPageStatus status = ChapterPageStatus.pending;
   PageAnalysis? analysis;
   PageEdits edits = PageEdits();
+  SourceFingerprint? fingerprint;
+  bool restoredFromCache = false;
   String? error;
   Duration? duration;
 }
@@ -67,10 +71,21 @@ String formatDuration(Duration value) {
 }
 
 class ChapterController extends ChangeNotifier {
-  ChapterController(this.repository, {Stopwatch Function()? stopwatchFactory})
-    : _stopwatchFactory = stopwatchFactory ?? Stopwatch.new;
+  ChapterController(
+    this.repository, {
+    Stopwatch Function()? stopwatchFactory,
+    this.persistence,
+  }) : _stopwatchFactory = stopwatchFactory ?? Stopwatch.new;
 
   final ProcessingRepository repository;
+  ChapterPersistenceRepository? persistence;
+  String? cacheWarning;
+  String? saveError;
+  bool _cacheWritable = true;
+  Timer? _saveDebounce;
+  ChapterPage? _debouncedPage;
+  bool _disposed = false;
+  Future<void> _saveTail = Future.value();
   final Stopwatch Function() _stopwatchFactory;
   List<ChapterPage> pages = [];
   final List<Duration> _successfulDurations = [];
@@ -101,6 +116,7 @@ class ChapterController extends ChangeNotifier {
   void setTranslation(String id, String? text) {
     if (analysis?.regions.any((region) => region.id == id) != true) return;
     selectedPage!.edits.setTranslation(id, text);
+    _scheduleSave(selectedPage!);
     notifyListeners();
   }
 
@@ -112,12 +128,14 @@ class ChapterController extends ChangeNotifier {
     final error = validateRegionBox(box, result);
     if (error != null) return error;
     selectedPage!.edits.setBox(id, box);
+    _scheduleSave(selectedPage!, immediate: true);
     notifyListeners();
     return null;
   }
 
   void resetBox(String id) {
     selectedPage?.edits.setBox(id, null);
+    if (selectedPage != null) _scheduleSave(selectedPage!, immediate: true);
     notifyListeners();
   }
 
@@ -174,6 +192,7 @@ class ChapterController extends ChangeNotifier {
   Future<void> open(String path) async {
     stopRequested = true;
     await _activePage;
+    await flushSaves();
     _generation++;
     _stopTimer();
     processing = false;
@@ -188,6 +207,35 @@ class ChapterController extends ChangeNotifier {
     chapterElapsed = Duration.zero;
     pageElapsed = Duration.zero;
     error = pages.isEmpty ? 'No supported images in this folder.' : null;
+    saveError = null;
+    cacheWarning = null;
+    _cacheWritable = true;
+    if (persistence != null && pages.isNotEmpty) {
+      final loaded = await persistence!.load(path);
+      cacheWarning = loaded.warning;
+      _cacheWritable = loaded.writable;
+      for (final page in pages) {
+        final saved = loaded.pages[page.name];
+        if (saved == null) continue;
+        try {
+          final current = await fingerprintFile(page.file);
+          if (current.sha256Hash != saved.fingerprint.sha256Hash) {
+            cacheWarning =
+                'Some source pages changed; stale analysis was not restored.';
+            continue;
+          }
+          page.fingerprint = current;
+          page.analysis = saved.analysis;
+          page.edits = saved.edits;
+          page.duration = saved.duration;
+          page.status = ChapterPageStatus.completed;
+          page.restoredFromCache = true;
+          if (page.duration != null) _successfulDurations.add(page.duration!);
+        } catch (_) {
+          cacheWarning = 'Some cached pages could not be validated.';
+        }
+      }
+    }
     stopRequested = false;
     notifyListeners();
   }
@@ -213,10 +261,11 @@ class ChapterController extends ChangeNotifier {
   Future<void> stopAndWait() async {
     requestStop();
     await _activePage;
+    await flushSaves();
   }
 
   Future<void> processPending() async {
-    if (processing || pages.isEmpty) return;
+    if (processing || pages.isEmpty || pendingCount == 0) return;
     processing = true;
     stopRequested = false;
     final generation = _generation;
@@ -276,14 +325,24 @@ class ChapterController extends ChangeNotifier {
     page.error = null;
     page.analysis = null;
     page.edits = PageEdits();
+    page.fingerprint = null;
+    page.restoredFromCache = false;
     page.duration = null;
     pageElapsed = Duration.zero;
     _pageWatch = _stopwatchFactory()..start();
     notifyListeners();
     try {
       final bytes = await page.file.readAsBytes();
+      final uploadedHash = sha256.convert(bytes).toString();
       final result = await repository.analyze(page.name, bytes);
       if (generation != _generation) return;
+      final current = await fingerprintFile(page.file);
+      if (current.sha256Hash != uploadedHash) {
+        throw StateError(
+          'Source image changed during processing. Retry this page.',
+        );
+      }
+      page.fingerprint = current;
       page.analysis = result;
       page.status = ChapterPageStatus.completed;
     } catch (e) {
@@ -299,6 +358,9 @@ class ChapterController extends ChangeNotifier {
         _pageWatch!.stop();
         pageElapsed = Duration.zero;
         notifyListeners();
+        if (page.status == ChapterPageStatus.completed) {
+          await _queueSave(page);
+        }
       }
     }
   }
@@ -308,6 +370,70 @@ class ChapterController extends ChangeNotifier {
     _chapterWatch?.reset();
     pageElapsed = _pageWatch?.elapsed ?? Duration.zero;
     notifyListeners();
+  }
+
+  void _scheduleSave(ChapterPage page, {bool immediate = false}) {
+    final previous = _debouncedPage;
+    if (_saveDebounce?.isActive == true &&
+        previous != null &&
+        previous != page) {
+      unawaited(_queueSave(previous));
+    }
+    _saveDebounce?.cancel();
+    _debouncedPage = null;
+    if (immediate) {
+      unawaited(_queueSave(page));
+    } else {
+      _debouncedPage = page;
+      _saveDebounce = Timer(const Duration(milliseconds: 700), () {
+        _debouncedPage = null;
+        unawaited(_queueSave(page));
+      });
+    }
+  }
+
+  Future<void> _queueSave(ChapterPage page) {
+    final source = directoryPath;
+    final service = persistence;
+    if (!_cacheWritable ||
+        source == null ||
+        service == null ||
+        page.status != ChapterPageStatus.completed ||
+        page.analysis == null ||
+        page.fingerprint == null) {
+      return Future.value();
+    }
+    _saveTail = _saveTail.then((_) async {
+      try {
+        await service.savePage(
+          source,
+          PersistedPage(
+            name: page.name,
+            fingerprint: page.fingerprint!,
+            analysis: page.analysis!,
+            edits: page.edits,
+            duration: page.duration,
+          ),
+        );
+        saveError = null;
+      } catch (error) {
+        saveError = 'Could not save chapter changes: $error';
+      }
+      if (!_disposed) notifyListeners();
+    });
+    return _saveTail;
+  }
+
+  Future<void> flushSaves() async {
+    final timer = _saveDebounce;
+    final page = _debouncedPage;
+    _saveDebounce = null;
+    _debouncedPage = null;
+    if (timer?.isActive == true && page != null) {
+      timer!.cancel();
+      await _queueSave(page);
+    }
+    await _saveTail;
   }
 
   @visibleForTesting
@@ -327,6 +453,8 @@ class ChapterController extends ChangeNotifier {
   @override
   void dispose() {
     _generation++;
+    unawaited(flushSaves());
+    _disposed = true;
     _stopTimer();
     super.dispose();
   }
