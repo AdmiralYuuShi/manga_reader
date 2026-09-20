@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../domain/page_analysis.dart';
+import '../../settings/manga_overlay_font.dart';
 import 'translation_overlay_layout.dart';
 
 class TranslationRegionOverlay extends StatelessWidget {
@@ -18,6 +19,7 @@ class TranslationRegionOverlay extends StatelessWidget {
     required this.showTranslation,
     required this.showDetectionBox,
     required this.onTap,
+    this.overlayFont = MangaOverlayFont.defaultFont,
   });
 
   final DetectedRegion region;
@@ -30,6 +32,7 @@ class TranslationRegionOverlay extends StatelessWidget {
   final bool showTranslation;
   final bool showDetectionBox;
   final VoidCallback onTap;
+  final MangaOverlayFont overlayFont;
 
   @override
   Widget build(BuildContext context) {
@@ -44,10 +47,10 @@ class TranslationRegionOverlay extends StatelessWidget {
         text?.trim().isNotEmpty == true &&
         baseRect.width >= minimumOverlayWidth &&
         baseRect.height >= minimumOverlayHeight;
-    const baseStyle = TextStyle(
+    final baseStyle = TextStyle(
       color: Colors.black87,
       height: 1.1,
-      fontWeight: FontWeight.w600,
+      fontFamily: overlayFont.family,
     );
     final layout = visibleText
         ? findTranslationOverlayLayout(

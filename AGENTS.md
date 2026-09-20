@@ -1922,9 +1922,10 @@ M0 → M1 → M2 → M3 → M4 → M7 → M5 → M6
    → M11 → M15 → M12 → M16 → M17 → M13 → M14 → V1 Release
 ```
 
-Current NEXT milestone: **M16 — Manga Font Selection**.
+Current milestone: **M16 — Manga Font Selection (IMPLEMENTED; AWAITING MANUAL VALIDATION)**.
 M12 is complete following successful manual validation. M15 Phase A profiling
-and Phase B GPU enablement are complete. M17, M13, and M14 remain PLANNED.
+and Phase B GPU enablement are complete. M17 is next after M16 manual
+validation; M17, M13, and M14 remain PLANNED.
 
 ### M11 — Interactive Text Box Move & Resize (COMPLETE)
 
@@ -1978,7 +1979,7 @@ chapter processing, and persisted edits remain available. Automated Flutter
 tests, static analysis, and the Windows build pass. The user completed manual
 Windows reader validation successfully with no issues or regressions found.
 
-### M16 — Manga Font Selection (NEXT)
+### M16 — Manga Font Selection (IMPLEMENTED; AWAITING MANUAL VALIDATION)
 
 Offer a curated, global manga/comic overlay font preference, persisted across
 restarts. Candidate fonts include Comic Neue (initial recommendation), Patrick
@@ -1986,6 +1987,14 @@ Hand, Kalam, Schoolbell, Short Stack, Coming Soon, Bangers, Bowlby One SC,
 Luckiest Guy, and Permanent Marker. Verify availability, licensing, and package
 compatibility during M16. Prefer bundled assets for offline use. Do not add
 per-region font choice or M9 automatic lettering in M16.
+
+Four verified fonts are bundled with licenses: Comic Neue (default), Patrick
+Hand, Bangers, and Permanent Marker. The global selection is stored separately
+from chapter metadata in application-support storage, falls back safely to the
+default, and updates translated overlays through the existing adaptive layout.
+The compact Settings selector previews each font. See `README.md` for the full
+ten-candidate audit and manual Windows checklist. Automated Flutter analysis,
+tests, and Windows build pass; manual validation remains before M16 is COMPLETE.
 
 ### M17 — Light / Dark Mode (PLANNED)
 

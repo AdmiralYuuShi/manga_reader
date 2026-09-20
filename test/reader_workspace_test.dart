@@ -9,6 +9,8 @@ import 'package:manga_translator/features/manga_processing/data/processing_repos
 import 'package:manga_translator/features/manga_processing/domain/page_analysis.dart';
 import 'package:manga_translator/features/manga_processing/presentation/manga_viewer_workspace.dart';
 import 'package:manga_translator/features/manga_processing/presentation/processing_controller.dart';
+import 'package:manga_translator/features/settings/manga_overlay_font.dart';
+import 'package:manga_translator/features/settings/overlay_font_preferences.dart';
 import 'package:manga_translator/main.dart';
 
 class IdleRepository extends ProcessingRepository {
@@ -167,4 +169,78 @@ void main() {
     chapter.dispose();
     await tester.runAsync(() => folder.delete(recursive: true));
   });
+
+  testWidgets(
+    'global font selector updates single and chapter overlays without changing analysis',
+    (tester) async {
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      tester.view.physicalSize = const Size(620, 700);
+      tester.view.devicePixelRatio = 1;
+      final directory = await tester.runAsync(
+        () => Directory.systemTemp.createTemp('font_workspace_'),
+      );
+      final preferenceFile = File(
+        '${directory!.path}${Platform.pathSeparator}font.json',
+      );
+      final preferences = OverlayFontPreferences(
+        preferenceFile: () async => preferenceFile,
+      );
+      final controller = ProcessingController(IdleRepository());
+      controller.selectImage('page.png', image);
+      controller.analysis = analysis;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomePage(controller: controller, fontPreferences: preferences),
+        ),
+      );
+      await tester.pump();
+      Text overlayText() => tester.widget<Text>(
+        find.byKey(const ValueKey('translation-text-region')),
+      );
+      expect(
+        overlayText().style!.fontFamily,
+        MangaOverlayFont.comicNeue.family,
+      );
+      await tester.tap(find.byTooltip('Settings'));
+      await tester.pumpAndSettle();
+      expect(find.text('Manga overlay font'), findsOneWidget);
+      expect(find.byKey(const ValueKey('font-option-bangers')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('font-option-bangers')));
+      await tester.pumpAndSettle();
+      expect(overlayText().style!.fontFamily, MangaOverlayFont.bangers.family);
+      expect(controller.analysis, same(analysis));
+      expect(controller.edits.hasEdits, isFalse);
+      await tester.pumpWidget(const SizedBox.shrink());
+      controller.dispose();
+
+      final pageFile = File(
+        '${directory.path}${Platform.pathSeparator}page.png',
+      );
+      final chapter = ChapterController(IdleRepository());
+      chapter.directoryPath = directory.path;
+      chapter.pages = [ChapterPage(pageFile)];
+      chapter.pages.first
+        ..status = ChapterPageStatus.completed
+        ..analysis = analysis;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomePage(
+            chapterController: chapter,
+            fontPreferences: preferences,
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(overlayText().style!.fontFamily, MangaOverlayFont.bangers.family);
+      expect(chapter.pages.first.analysis, same(analysis));
+      expect(chapter.pages.first.edits.hasEdits, isFalse);
+      await tester.pumpWidget(const SizedBox.shrink());
+      chapter.dispose();
+      imageCache.clear();
+      imageCache.clearLiveImages();
+      preferences.dispose();
+      await tester.runAsync(() => directory.delete(recursive: true));
+    },
+  );
 }

@@ -9,6 +9,8 @@ import 'features/manga_processing/data/processing_repository.dart';
 import 'features/manga_processing/presentation/processing_controller.dart';
 import 'features/manga_processing/presentation/manga_viewer_workspace.dart';
 import 'features/manga_processing/presentation/region_editor.dart';
+import 'features/settings/manga_overlay_font.dart';
+import 'features/settings/overlay_font_preferences.dart';
 
 void main() => runApp(const MangaTranslatorApp());
 
@@ -18,17 +20,26 @@ class MangaTranslatorApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) => MaterialApp(
     title: 'Manga Translator',
-    theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo)),
+    theme: ThemeData(
+      colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
+    ),
     home: const HomePage(),
   );
 }
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key, this.apiClient, this.controller, this.chapterController});
+  const HomePage({
+    super.key,
+    this.apiClient,
+    this.controller,
+    this.chapterController,
+    this.fontPreferences,
+  });
 
   final ApiClient? apiClient;
   final ProcessingController? controller;
   final ChapterController? chapterController;
+  final OverlayFontPreferences? fontPreferences;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -37,30 +48,113 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   late final ApiClient _apiClient = widget.apiClient ?? ApiClient();
   late final ProcessingController _controller =
-      widget.controller ?? ProcessingController(ProcessingRepository(ProcessingRemoteDataSource(_apiClient)));
+      widget.controller ??
+      ProcessingController(
+        ProcessingRepository(ProcessingRemoteDataSource(_apiClient)),
+      );
   late Future<HealthResponse> _health = _apiClient.getHealth();
-  late final ChapterController _chapter = widget.chapterController ?? ChapterController(_controller.repository);
+  late final ChapterController _chapter =
+      widget.chapterController ?? ChapterController(_controller.repository);
+  late final OverlayFontPreferences _fontPreferences =
+      widget.fontPreferences ?? OverlayFontPreferences();
   late bool _chapterMode = _chapter.directoryPath != null;
   bool _showTranslationOverlay = true;
   bool _showDetectionBoxes = true;
 
+  @override
+  void initState() {
+    super.initState();
+    _fontPreferences.load();
+  }
+
+  Future<void> _showSettings() => showDialog<void>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Settings'),
+      content: SizedBox(
+        width: 340,
+        child: ListenableBuilder(
+          listenable: _fontPreferences,
+          builder: (context, _) => Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Manga overlay font',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const SizedBox(height: 8),
+              for (final font in MangaOverlayFont.all)
+                ListTile(
+                  key: ValueKey('font-option-${font.id}'),
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(font.label),
+                  subtitle: Text(
+                    'Manga 123',
+                    style: TextStyle(fontFamily: font.family, fontSize: 18),
+                  ),
+                  trailing: _fontPreferences.selected == font
+                      ? const Icon(Icons.check)
+                      : null,
+                  selected: _fontPreferences.selected == font,
+                  onTap: () async {
+                    Navigator.of(dialogContext).pop();
+                    try {
+                      await _fontPreferences.select(font);
+                    } catch (error) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(this.context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Could not save overlay font: $error',
+                            ),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(),
+          child: const Text('Close'),
+        ),
+      ],
+    ),
+  );
+
   void _refresh() => setState(() => _health = _apiClient.getHealth());
 
   Future<void> _openImage() async {
-    const images = XTypeGroup(label: 'Manga images', extensions: ['jpg', 'jpeg', 'png', 'webp']);
+    const images = XTypeGroup(
+      label: 'Manga images',
+      extensions: ['jpg', 'jpeg', 'png', 'webp'],
+    );
     try {
       final selected = await openFile(acceptedTypeGroups: [images]);
       if (selected != null) {
         await _chapter.stopAndWait();
         setState(() => _chapterMode = false);
         if (widget.controller == null) {
-          _controller.persistence ??= ChapterPersistenceRepository(await getApplicationSupportDirectory());
+          _controller.persistence ??= ChapterPersistenceRepository(
+            await getApplicationSupportDirectory(),
+          );
         }
-        await _controller.openImageFile(selected.path, await selected.readAsBytes());
+        await _controller.openImageFile(
+          selected.path,
+          await selected.readAsBytes(),
+        );
       }
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not open image: $error')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Could not open image: $error')));
       }
     }
   }
@@ -71,13 +165,17 @@ class _HomePageState extends State<HomePage> {
       if (path == null) return;
       await _controller.flushSaves();
       if (widget.chapterController == null) {
-        _chapter.persistence ??= ChapterPersistenceRepository(await getApplicationSupportDirectory());
+        _chapter.persistence ??= ChapterPersistenceRepository(
+          await getApplicationSupportDirectory(),
+        );
       }
       await _chapter.open(path);
       if (mounted) setState(() => _chapterMode = true);
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not open chapter: $error')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open chapter: $error')),
+        );
       }
     }
   }
@@ -86,60 +184,87 @@ class _HomePageState extends State<HomePage> {
   void dispose() {
     if (widget.chapterController == null) _chapter.dispose();
     if (widget.controller == null) _controller.dispose();
+    if (widget.fontPreferences == null) _fontPreferences.dispose();
     super.dispose();
   }
 
   Widget _topActions() => SizedBox(
     height: 52,
-    child: SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        child: Row(
-          children: [
-            FilledButton.tonalIcon(
-              onPressed: _openImage,
-              icon: const Icon(Icons.image_outlined),
-              label: const Text('Open Image'),
-            ),
-            const SizedBox(width: 8),
-            FilledButton.tonalIcon(
-              onPressed: _openChapter,
-              icon: const Icon(Icons.folder_open_outlined),
-              label: const Text('Open Chapter'),
-            ),
-            const SizedBox(width: 16),
-            if (_chapterMode) ...[
-              FilledButton.icon(
-                onPressed: _chapter.processing || _chapter.pendingCount == 0 ? null : _chapter.processPending,
-                icon: const Icon(Icons.play_arrow),
-                label: const Text('Process Chapter'),
+    child: Row(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Row(
+                children: [
+                  FilledButton.tonalIcon(
+                    onPressed: _openImage,
+                    icon: const Icon(Icons.image_outlined),
+                    label: const Text('Open Image'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.tonalIcon(
+                    onPressed: _openChapter,
+                    icon: const Icon(Icons.folder_open_outlined),
+                    label: const Text('Open Chapter'),
+                  ),
+                  const SizedBox(width: 16),
+                  if (_chapterMode) ...[
+                    FilledButton.icon(
+                      onPressed:
+                          _chapter.processing || _chapter.pendingCount == 0
+                          ? null
+                          : _chapter.processPending,
+                      icon: const Icon(Icons.play_arrow),
+                      label: const Text('Process Chapter'),
+                    ),
+                    if (_chapter.processing) ...[
+                      const SizedBox(width: 8),
+                      OutlinedButton(
+                        onPressed: _chapter.stopRequested
+                            ? null
+                            : _chapter.requestStop,
+                        child: Text(
+                          _chapter.stopRequested
+                              ? 'Stopping after page...'
+                              : 'Stop After Page',
+                        ),
+                      ),
+                    ],
+                    if (_chapter.selectedPage?.status ==
+                            ChapterPageStatus.failed &&
+                        !_chapter.processing) ...[
+                      const SizedBox(width: 8),
+                      OutlinedButton(
+                        onPressed: () =>
+                            _chapter.retryPage(_chapter.selectedPageIndex),
+                        child: const Text('Retry Page'),
+                      ),
+                    ],
+                  ] else
+                    FilledButton.icon(
+                      onPressed:
+                          _controller.imageBytes == null ||
+                              _controller.status == ProcessingStatus.processing
+                          ? null
+                          : _controller.detect,
+                      icon: const Icon(Icons.auto_fix_high),
+                      label: const Text('Analyze Page'),
+                    ),
+                ],
               ),
-              if (_chapter.processing) ...[
-                const SizedBox(width: 8),
-                OutlinedButton(
-                  onPressed: _chapter.stopRequested ? null : _chapter.requestStop,
-                  child: Text(_chapter.stopRequested ? 'Stopping after page...' : 'Stop After Page'),
-                ),
-              ],
-              if (_chapter.selectedPage?.status == ChapterPageStatus.failed && !_chapter.processing) ...[
-                const SizedBox(width: 8),
-                OutlinedButton(
-                  onPressed: () => _chapter.retryPage(_chapter.selectedPageIndex),
-                  child: const Text('Retry Page'),
-                ),
-              ],
-            ] else
-              FilledButton.icon(
-                onPressed: _controller.imageBytes == null || _controller.status == ProcessingStatus.processing
-                    ? null
-                    : _controller.detect,
-                icon: const Icon(Icons.auto_fix_high),
-                label: const Text('Analyze Page'),
-              ),
-          ],
+            ),
+          ),
         ),
-      ),
+        IconButton(
+          onPressed: _showSettings,
+          icon: const Icon(Icons.settings_outlined),
+          tooltip: 'Settings',
+        ),
+        const SizedBox(width: 8),
+      ],
     ),
   );
 
@@ -154,7 +279,10 @@ class _HomePageState extends State<HomePage> {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-              child: Text('Pages', style: Theme.of(context).textTheme.titleSmall),
+              child: Text(
+                'Pages',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
             ),
             const Divider(height: 1),
             Expanded(
@@ -177,15 +305,25 @@ class _HomePageState extends State<HomePage> {
                     leading: Icon(
                       icon,
                       size: 18,
-                      color: page.status == ChapterPageStatus.failed ? colors.error : colors.primary,
+                      color: page.status == ChapterPageStatus.failed
+                          ? colors.error
+                          : colors.primary,
                     ),
                     title: Text(page.name, overflow: TextOverflow.ellipsis),
                     trailing: page.edits.hasEdits
-                        ? const Tooltip(message: 'Edited', child: Icon(Icons.edit, size: 16))
+                        ? const Tooltip(
+                            message: 'Edited',
+                            child: Icon(Icons.edit, size: 16),
+                          )
                         : page.restoredFromCache
-                        ? const Tooltip(message: 'Cached', child: Icon(Icons.cloud_done_outlined, size: 16))
+                        ? const Tooltip(
+                            message: 'Cached',
+                            child: Icon(Icons.cloud_done_outlined, size: 16),
+                          )
                         : null,
-                    subtitle: page.duration == null ? null : Text(formatDuration(page.duration!)),
+                    subtitle: page.duration == null
+                        ? null
+                        : Text(formatDuration(page.duration!)),
                     onTap: () => _chapter.selectPage(index),
                   );
                 },
@@ -226,23 +364,42 @@ class _HomePageState extends State<HomePage> {
             const VerticalDivider(width: 16),
           ],
           const SizedBox(width: 8),
-          const Tooltip(message: 'Translation Overlay', child: Icon(Icons.translate, size: 18)),
-          Switch(value: _showTranslationOverlay, onChanged: (value) => setState(() => _showTranslationOverlay = value)),
+          const Tooltip(
+            message: 'Translation Overlay',
+            child: Icon(Icons.translate, size: 18),
+          ),
+          Switch(
+            value: _showTranslationOverlay,
+            onChanged: (value) =>
+                setState(() => _showTranslationOverlay = value),
+          ),
           const SizedBox(width: 8),
-          const Tooltip(message: 'Detection Boxes', child: Icon(Icons.crop_free, size: 18)),
-          Switch(value: _showDetectionBoxes, onChanged: (value) => setState(() => _showDetectionBoxes = value)),
+          const Tooltip(
+            message: 'Detection Boxes',
+            child: Icon(Icons.crop_free, size: 18),
+          ),
+          Switch(
+            value: _showDetectionBoxes,
+            onChanged: (value) => setState(() => _showDetectionBoxes = value),
+          ),
         ],
       ),
     ),
   );
 
   Widget _viewer() {
-    final hasImage = _chapterMode ? _chapter.selectedPage != null : _controller.imageBytes != null;
+    final hasImage = _chapterMode
+        ? _chapter.selectedPage != null
+        : _controller.imageBytes != null;
     final chapterMode = _chapterMode;
     final page = chapterMode ? _chapter.selectedPage : null;
     final analysis = chapterMode ? _chapter.analysis : _controller.analysis;
-    final selected = chapterMode ? _chapter.selectedRegion : _controller.selectedRegion;
-    final edits = chapterMode ? (page?.edits ?? _controller.edits) : _controller.edits;
+    final selected = chapterMode
+        ? _chapter.selectedRegion
+        : _controller.selectedRegion;
+    final edits = chapterMode
+        ? (page?.edits ?? _controller.edits)
+        : _controller.edits;
     return Column(
       children: [
         _viewerToolbar(),
@@ -260,14 +417,18 @@ class _HomePageState extends State<HomePage> {
                     selectedRegion: selected,
                     showTranslation: _showTranslationOverlay,
                     showDetectionBoxes: _showDetectionBoxes,
-                    onSelectRegion: (id) => chapterMode ? _chapter.selectRegion(id) : _controller.selectRegion(id),
+                    onSelectRegion: (id) => chapterMode
+                        ? _chapter.selectRegion(id)
+                        : _controller.selectRegion(id),
                     onPreviewBox: (box) {
                       if (selected == null) return;
                       if (chapterMode) {
-                        if (_chapter.selectedPage == page && _chapter.selectedRegionId == selected.id) {
+                        if (_chapter.selectedPage == page &&
+                            _chapter.selectedRegionId == selected.id) {
                           _chapter.setBox(selected.id, box, persist: false);
                         }
-                      } else if (_controller.analysis == analysis && _controller.selectedRegionId == selected.id) {
+                      } else if (_controller.analysis == analysis &&
+                          _controller.selectedRegionId == selected.id) {
                         _controller.setBox(selected.id, box, persist: false);
                       }
                     },
@@ -278,6 +439,7 @@ class _HomePageState extends State<HomePage> {
                         _controller.commitBoxPreview();
                       }
                     },
+                    overlayFont: _fontPreferences.selected,
                   ),
           ),
         ),
@@ -286,7 +448,9 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _inspector(double width) {
-    final region = _chapterMode ? _chapter.selectedRegion : _controller.selectedRegion;
+    final region = _chapterMode
+        ? _chapter.selectedRegion
+        : _controller.selectedRegion;
     final colors = Theme.of(context).colorScheme;
     return SizedBox(
       width: width,
@@ -299,7 +463,12 @@ class _HomePageState extends State<HomePage> {
               child: Row(
                 children: [
                   const SizedBox(width: 12),
-                  Expanded(child: Text('Inspector', style: Theme.of(context).textTheme.titleSmall)),
+                  Expanded(
+                    child: Text(
+                      'Inspector',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                  ),
                   if (region != null)
                     IconButton(
                       onPressed: () => setState(() {
@@ -318,7 +487,10 @@ class _HomePageState extends State<HomePage> {
                   ? const Center(
                       child: Padding(
                         padding: EdgeInsets.all(20),
-                        child: Text('Select a text region to inspect or edit it.', textAlign: TextAlign.center),
+                        child: Text(
+                          'Select a text region to inspect or edit it.',
+                          textAlign: TextAlign.center,
+                        ),
                       ),
                     )
                   : RegionEditor(
@@ -326,14 +498,21 @@ class _HomePageState extends State<HomePage> {
                         '${_chapterMode ? '${_chapter.directoryPath}:${_chapter.selectedPageIndex}' : _controller.filename}:${region.id}',
                       ),
                       region: region,
-                      analysis: _chapterMode ? _chapter.analysis! : _controller.analysis!,
-                      edits: _chapterMode ? _chapter.selectedPage!.edits : _controller.edits,
+                      analysis: _chapterMode
+                          ? _chapter.analysis!
+                          : _controller.analysis!,
+                      edits: _chapterMode
+                          ? _chapter.selectedPage!.edits
+                          : _controller.edits,
                       onTranslation: (text) => _chapterMode
                           ? _chapter.setTranslation(region.id, text)
                           : _controller.setTranslation(region.id, text),
-                      onBox: (box) =>
-                          _chapterMode ? _chapter.setBox(region.id, box) : _controller.setBox(region.id, box),
-                      onResetBox: () => _chapterMode ? _chapter.resetBox(region.id) : _controller.resetBox(region.id),
+                      onBox: (box) => _chapterMode
+                          ? _chapter.setBox(region.id, box)
+                          : _controller.setBox(region.id, box),
+                      onResetBox: () => _chapterMode
+                          ? _chapter.resetBox(region.id)
+                          : _controller.resetBox(region.id),
                     ),
             ),
           ],
@@ -345,12 +524,20 @@ class _HomePageState extends State<HomePage> {
   Widget _statusBar() {
     final colors = Theme.of(context).colorScheme;
     final messages = <Widget>[];
-    void add(String value, {bool error = false}) =>
-        messages.add(Text(value, style: TextStyle(color: error ? colors.error : colors.onSurface)));
+    void add(String value, {bool error = false}) => messages.add(
+      Text(
+        value,
+        style: TextStyle(color: error ? colors.error : colors.onSurface),
+      ),
+    );
     if (_chapterMode) {
-      add('${_chapter.completedCount} completed / ${_chapter.pages.length} pages');
+      add(
+        '${_chapter.completedCount} completed / ${_chapter.pages.length} pages',
+      );
       if (_chapter.processing) {
-        add('Processing page ${_chapter.currentPageIndex + 1} / ${_chapter.pages.length}');
+        add(
+          'Processing page ${_chapter.currentPageIndex + 1} / ${_chapter.pages.length}',
+        );
         add('Elapsed ${formatDuration(_chapter.chapterElapsed)}');
         if (_chapter.estimatedRemaining case final remaining?) {
           add('Remaining ~${formatDuration(remaining)}');
@@ -406,8 +593,12 @@ class _HomePageState extends State<HomePage> {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (_chapterMode && _chapter.pages.isNotEmpty)
-            LinearProgressIndicator(value: _chapter.settledCount / _chapter.pages.length),
-          if (!_chapterMode && _controller.status == ProcessingStatus.processing) const LinearProgressIndicator(),
+            LinearProgressIndicator(
+              value: _chapter.settledCount / _chapter.pages.length,
+            ),
+          if (!_chapterMode &&
+              _controller.status == ProcessingStatus.processing)
+            const LinearProgressIndicator(),
           SizedBox(
             height: 34,
             child: SingleChildScrollView(
@@ -435,7 +626,10 @@ class _HomePageState extends State<HomePage> {
                     tooltip: 'Retry backend',
                     iconSize: 18,
                   ),
-                  for (final message in messages) ...[const SizedBox(width: 16), message],
+                  for (final message in messages) ...[
+                    const SizedBox(width: 16),
+                    message,
+                  ],
                 ],
               ),
             ),
@@ -459,13 +653,19 @@ class _HomePageState extends State<HomePage> {
           children: [
             Expanded(child: _viewer()),
             const Divider(height: 1),
-            SizedBox(height: (constraints.maxHeight * 0.42).clamp(160.0, 260.0), child: _inspector(width)),
+            SizedBox(
+              height: (constraints.maxHeight * 0.42).clamp(160.0, 260.0),
+              child: _inspector(width),
+            ),
           ],
         );
       }
       return Row(
         children: [
-          if (_chapterMode) ...[_navigationPanel(width >= 1000 ? 190 : 150), const VerticalDivider(width: 1)],
+          if (_chapterMode) ...[
+            _navigationPanel(width >= 1000 ? 190 : 150),
+            const VerticalDivider(width: 1),
+          ],
           Expanded(child: _viewer()),
           const VerticalDivider(width: 1),
           _inspector(inspectorWidth),
@@ -479,7 +679,7 @@ class _HomePageState extends State<HomePage> {
     // No Need Appbar
     // appBar: AppBar(title: const Text('Manga Translator')),
     body: AnimatedBuilder(
-      animation: Listenable.merge([_controller, _chapter]),
+      animation: Listenable.merge([_controller, _chapter, _fontPreferences]),
       builder: (context, _) => Column(
         children: [
           _topActions(),

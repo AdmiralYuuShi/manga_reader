@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../domain/page_analysis.dart';
 import '../domain/region_edits.dart';
+import '../../settings/manga_overlay_font.dart';
 import 'region_geometry.dart';
 import 'selected_box_overlay.dart';
 import 'translation_region_overlay.dart';
@@ -23,6 +24,7 @@ class MangaViewerWorkspace extends StatelessWidget {
     required this.onSelectRegion,
     required this.onPreviewBox,
     required this.onCommitBox,
+    this.overlayFont = MangaOverlayFont.defaultFont,
   });
 
   final File? file;
@@ -35,6 +37,7 @@ class MangaViewerWorkspace extends StatelessWidget {
   final ValueChanged<String> onSelectRegion;
   final ValueChanged<RegionBox> onPreviewBox;
   final VoidCallback onCommitBox;
+  final MangaOverlayFont overlayFont;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -69,6 +72,7 @@ class MangaViewerWorkspace extends StatelessWidget {
           if (result != null)
             for (var index = 0; index < result.regions.length; index++)
               TranslationRegionOverlay(
+                overlayFont: overlayFont,
                 region: result.regions[index],
                 rect: detectorRects[index],
                 translationRect: displayRectForBox(

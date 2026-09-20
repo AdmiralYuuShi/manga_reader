@@ -28,6 +28,51 @@ check that controls stay usable and boxes stay aligned. View light and dark
 application chrome and confirm manga pixels remain unchanged. Restart and
 reopen the same image or chapter to check cached results and edits.
 
+## Manga overlay font (Milestone 16)
+
+Open **Settings** in the top action bar to choose one font for all translated
+overlays. The selector previews each font. Comic Neue is the default. Selection
+updates the current page immediately and is saved automatically in
+`overlay_font.json` under Flutter's application-support directory, separate
+from chapter metadata and region edits. Missing, invalid, or obsolete IDs fall
+back to Comic Neue. All four fonts are bundled, so selection works offline.
+The font applies only to translated overlays; app chrome keeps its theme font.
+The existing overlay fitter measures the chosen font. Automatic expansion is
+visual only and does not change saved text-box geometry.
+
+Font audit (authoritative files from the
+[Google Fonts repository](https://github.com/google/fonts); Flutter supports
+bundled TTF files through `pubspec.yaml`):
+
+| Candidate | License, available normal weights | M16 decision |
+| --- | --- | --- |
+| [Comic Neue](https://github.com/google/fonts/tree/main/ofl/comicneue) | SIL OFL 1.1; 300, 400, 700, plus italics | Bundled 400; default |
+| [Patrick Hand](https://github.com/google/fonts/tree/main/ofl/patrickhand) | SIL OFL 1.1; 400 | Bundled 400 |
+| [Kalam](https://github.com/google/fonts/tree/main/ofl/kalam) | SIL OFL 1.1; 300, 400, 700 | Verified; deferred to keep the selector concise |
+| [Schoolbell](https://github.com/google/fonts/tree/main/apache/schoolbell) | Apache 2.0; 400 | Verified; deferred to keep the selector concise |
+| [Short Stack](https://github.com/google/fonts/tree/main/ofl/shortstack) | SIL OFL 1.1; 400 | Verified; deferred to keep the selector concise |
+| [Coming Soon](https://github.com/google/fonts/tree/main/apache/comingsoon) | Apache 2.0; 400 | Verified; deferred to keep the selector concise |
+| [Bangers](https://github.com/google/fonts/tree/main/ofl/bangers) | SIL OFL 1.1; 400 | Bundled 400 |
+| [Bowlby One SC](https://github.com/google/fonts/tree/main/ofl/bowlbyonesc) | SIL OFL 1.1; 400 | Verified; deferred to keep the selector concise |
+| [Luckiest Guy](https://github.com/google/fonts/tree/main/apache/luckiestguy) | Apache 2.0; 400 | Verified; deferred to keep the selector concise |
+| [Permanent Marker](https://github.com/google/fonts/tree/main/apache/permanentmarker) | Apache 2.0; 400 | Bundled 400 |
+
+All candidates have TTF files in that repository. SIL OFL permits bundling
+with software when its license and copyright notice travel with the font;
+Apache 2.0 likewise permits redistribution with its license and notices.
+The exact licenses for bundled files are in `assets/fonts/licenses/`. Bundled
+faces use regular weight only. Google Fonts metadata lists Latin coverage for
+the selected faces; translations containing other scripts rely on Flutter's
+font fallback and may look different within one overlay.
+
+Manual Windows check: launch with no preference and confirm Comic Neue; open
+Settings and preview/select several fonts; confirm the visible overlay changes
+without OCR or translation rerunning and edited text and geometry remain intact.
+Move and resize a selected box, then open another page and chapter/image and
+confirm the global font remains selected. Restart, test offline, resize the
+window, and confirm the selection persists, the selector does not overflow,
+the chrome font stays unchanged, and manga image pixels remain unchanged.
+
 ## Chapter processing (Milestone 7)
 
 **Open Chapter** selects a folder. Direct child JPEG, PNG, and WebP files are
