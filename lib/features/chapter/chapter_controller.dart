@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../manga_processing/data/processing_repository.dart';
 import '../manga_processing/domain/page_analysis.dart';
+import '../manga_processing/domain/region_edits.dart';
 
 enum ChapterPageStatus { pending, processing, completed, failed }
 
@@ -14,6 +15,7 @@ class ChapterPage {
   String get name => file.uri.pathSegments.last;
   ChapterPageStatus status = ChapterPageStatus.pending;
   PageAnalysis? analysis;
+  PageEdits edits = PageEdits();
   String? error;
   Duration? duration;
 }
@@ -94,6 +96,29 @@ class ChapterController extends ChangeNotifier {
       if (region.id == selectedRegionId) return region;
     }
     return null;
+  }
+
+  void setTranslation(String id, String? text) {
+    if (analysis?.regions.any((region) => region.id == id) != true) return;
+    selectedPage!.edits.setTranslation(id, text);
+    notifyListeners();
+  }
+
+  String? setBox(String id, RegionBox box) {
+    final result = analysis;
+    if (result == null || !result.regions.any((region) => region.id == id)) {
+      return 'Region is unavailable.';
+    }
+    final error = validateRegionBox(box, result);
+    if (error != null) return error;
+    selectedPage!.edits.setBox(id, box);
+    notifyListeners();
+    return null;
+  }
+
+  void resetBox(String id) {
+    selectedPage?.edits.setBox(id, null);
+    notifyListeners();
   }
 
   String get name => directoryPath == null
@@ -250,6 +275,7 @@ class ChapterController extends ChangeNotifier {
     page.status = ChapterPageStatus.processing;
     page.error = null;
     page.analysis = null;
+    page.edits = PageEdits();
     page.duration = null;
     pageElapsed = Duration.zero;
     _pageWatch = _stopwatchFactory()..start();

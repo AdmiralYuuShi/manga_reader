@@ -11,6 +11,92 @@ import 'chapter_test.dart' show QueueRepository;
 
 void main() {
   testWidgets(
+    'editor follows chapter page selection and keeps page-local edits',
+    (tester) async {
+      final folder = await tester.runAsync(
+        () => Directory.systemTemp.createTemp('manga_editor_chapter_'),
+      );
+      final bytes = base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlqS28AAAAASUVORK5CYII=',
+      );
+      final first = File('${folder!.path}${Platform.pathSeparator}1.png');
+      final second = File('${folder.path}${Platform.pathSeparator}2.png');
+      await tester.runAsync(() async {
+        await first.writeAsBytes(bytes);
+        await second.writeAsBytes(bytes);
+      });
+      const analysis = PageAnalysis(
+        width: 100,
+        height: 100,
+        regions: [
+          DetectedRegion(
+            id: 'shared',
+            x: 10,
+            y: 10,
+            width: 60,
+            height: 60,
+            sourceText: '日本語',
+            translatedText: 'Machine',
+          ),
+        ],
+      );
+      final chapter = ChapterController(QueueRepository());
+      chapter.directoryPath = folder.path;
+      chapter.pages = [ChapterPage(first), ChapterPage(second)];
+      for (final page in chapter.pages) {
+        page.status = ChapterPageStatus.completed;
+        page.analysis = analysis;
+      }
+      chapter.selectRegion('shared');
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(chapterController: chapter)),
+      );
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(const ValueKey('translation-editor')),
+        'Page one',
+      );
+      await tester.pump();
+      expect(
+        chapter.pages[0].edits.effectiveTranslation(analysis.regions.first),
+        'Page one',
+      );
+      chapter.selectPage(1);
+      chapter.selectRegion('shared');
+      await tester.pump();
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('translation-editor')))
+            .controller!
+            .text,
+        'Machine',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('translation-editor')),
+        'Page two',
+      );
+      await tester.pump();
+      chapter.selectPage(0);
+      chapter.selectRegion('shared');
+      await tester.pump();
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('translation-editor')))
+            .controller!
+            .text,
+        'Page one',
+      );
+      expect(
+        chapter.pages[1].edits.effectiveTranslation(analysis.regions.first),
+        'Page two',
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      chapter.dispose();
+      await tester.runAsync(() => folder.delete(recursive: true));
+    },
+  );
+
+  testWidgets(
     'chapter viewer switches overlays and clears them on pending pages',
     (tester) async {
       final folder = await tester.runAsync(

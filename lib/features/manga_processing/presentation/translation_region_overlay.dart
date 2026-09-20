@@ -10,6 +10,8 @@ class TranslationRegionOverlay extends StatelessWidget {
     super.key,
     required this.region,
     required this.rect,
+    this.translationRect,
+    this.editedTranslatedText,
     required this.imageRect,
     required this.obstacles,
     required this.selected,
@@ -20,6 +22,8 @@ class TranslationRegionOverlay extends StatelessWidget {
 
   final DetectedRegion region;
   final Rect rect;
+  final Rect? translationRect;
+  final String? editedTranslatedText;
   final Rect imageRect;
   final List<Rect> obstacles;
   final bool selected;
@@ -29,15 +33,17 @@ class TranslationRegionOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final text = region.translatedText;
+    final baseRect = translationRect ?? rect;
+    final text = editedTranslatedText ?? region.translatedText;
     final visibleText =
         showTranslation &&
-        region.errorCode == null &&
-        region.translationErrorCode == null &&
-        region.sourceText?.trim().isNotEmpty == true &&
+        (region.errorCode == null || editedTranslatedText != null) &&
+        (region.translationErrorCode == null || editedTranslatedText != null) &&
+        (region.sourceText?.trim().isNotEmpty == true ||
+            editedTranslatedText != null) &&
         text?.trim().isNotEmpty == true &&
-        rect.width >= minimumOverlayWidth &&
-        rect.height >= minimumOverlayHeight;
+        baseRect.width >= minimumOverlayWidth &&
+        baseRect.height >= minimumOverlayHeight;
     const baseStyle = TextStyle(
       color: Colors.black87,
       height: 1.1,
@@ -46,15 +52,15 @@ class TranslationRegionOverlay extends StatelessWidget {
     final layout = visibleText
         ? findTranslationOverlayLayout(
             text: text!,
-            detectorRect: rect,
+            detectorRect: baseRect,
             imageRect: imageRect,
             obstacles: obstacles,
             style: baseStyle,
             direction: Directionality.of(context),
             textScaler: MediaQuery.textScalerOf(context),
           )
-        : TranslationOverlayLayout(rect, minimumOverlayFontSize, false);
-    final displayedRect = visibleText ? layout.rect : rect;
+        : TranslationOverlayLayout(baseRect, minimumOverlayFontSize, false);
+    final displayedRect = visibleText ? layout.rect : baseRect;
     final availableHeight = math.max(
       0,
       displayedRect.height - overlayPadding * 2,

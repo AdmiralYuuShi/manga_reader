@@ -1743,19 +1743,28 @@ Translation remains aligned with the appropriate region during resizing and zoom
 
 Goal:
 
-Allow human correction.
+Allow non-destructive user overrides for translation text and translation
+text-box geometry. Japanese OCR text remains read-only in this scope.
 
 Tasks:
 
-- edit OCR result,
-- edit translation,
-- track edited state,
-- preserve original OCR result if useful,
-- update UI immediately.
+- edit translated text without replacing the machine translation,
+- override translation box x/y/width/height in original-image pixels without
+  replacing the detector bbox,
+- reset translation and geometry independently,
+- update the M4 overlay from effective user overrides immediately.
+
+Generated detector/OCR/translator outputs and user edits must remain separate.
+Effective translation is the edited text when present (including an intentional
+empty string), otherwise the machine translation. Effective base geometry is
+the edited box when present, otherwise the detector box. M4 automatic expansion
+starts from the effective base box; Detection Boxes show the original detector
+box. M6 will persist generated data and overrides. M9 should consume effective
+text and geometry where appropriate. M5 state is in memory only.
 
 Definition of done:
 
-Users can correct inaccurate OCR or translations without reprocessing the page.
+Users can edit translation and translation placement without reprocessing.
 
 ---
 
@@ -1872,8 +1881,8 @@ Original files must remain untouched.
 # 53. Current Priority
 
 Milestone numbers group features; they do not require implementation in numeric order.
-M0, M1, M2, M3, and M4 are COMPLETE. M7 is NEXT / PRIORITIZED.
-M5, M6, M8, M9, and M10 are PLANNED.
+M0, M1, M2, M3, M4, M7, and M5 are COMPLETE. M6 is NEXT.
+M8, M9, and M10 are PLANNED.
 
 Execution priority is:
 
@@ -1893,8 +1902,8 @@ Correctness and bounded resource usage take priority over throughput: process
 pages sequentially by default, never the whole chapter concurrently. A failed
 page must not invalidate completed pages or prevent later pages from running.
 
-Current objective: implement M7 chapter processing and validate Chapter → Page
-→ Region in memory. Do not start M5 or M6 as part of M7.
+Current objective: design M6 persistence for generated page analysis and
+M5 user overrides across Chapter → Page → Region. M6 is not implemented yet.
 
 Do not begin:
 

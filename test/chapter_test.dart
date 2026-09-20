@@ -6,6 +6,7 @@ import 'package:manga_translator/core/api/api_client.dart';
 import 'package:manga_translator/features/chapter/chapter_controller.dart';
 import 'package:manga_translator/features/manga_processing/data/processing_repository.dart';
 import 'package:manga_translator/features/manga_processing/domain/page_analysis.dart';
+import 'package:manga_translator/features/manga_processing/domain/region_edits.dart';
 
 class QueueRepository extends ProcessingRepository {
   QueueRepository() : super(ProcessingRemoteDataSource(ApiClient()));
@@ -182,6 +183,51 @@ void main() {
     await chapter.open(folder.path);
     expect(chapter.pages, isEmpty);
     expect(chapter.error, isNotNull);
+  });
+
+  test('chapter edits belong to page and region and survive navigation', () {
+    const analysis = PageAnalysis(
+      width: 100,
+      height: 100,
+      regions: [
+        DetectedRegion(
+          id: 'region_0',
+          x: 10,
+          y: 10,
+          width: 30,
+          height: 30,
+          translatedText: 'Machine',
+        ),
+      ],
+    );
+    final chapter = ChapterController(QueueRepository());
+    addTearDown(chapter.dispose);
+    chapter.pages = [ChapterPage(File('1.png')), ChapterPage(File('2.png'))];
+    chapter.pages[0].analysis = analysis;
+    chapter.pages[1].analysis = analysis;
+    chapter.selectRegion('region_0');
+    chapter.setTranslation('region_0', 'Page one');
+    expect(chapter.setBox('region_0', const RegionBox(0, 0, 40, 40)), isNull);
+    chapter.selectPage(1);
+    chapter.selectRegion('region_0');
+    expect(
+      chapter.selectedPage!.edits.effectiveTranslation(chapter.selectedRegion!),
+      'Machine',
+    );
+    chapter.setTranslation('region_0', 'Page two');
+    chapter.selectPage(0);
+    expect(
+      chapter.pages[0].edits.effectiveTranslation(analysis.regions.first),
+      'Page one',
+    );
+    expect(
+      chapter.pages[0].edits.effectiveBox(analysis.regions.first),
+      const RegionBox(0, 0, 40, 40),
+    );
+    expect(
+      chapter.pages[1].edits.effectiveTranslation(analysis.regions.first),
+      'Page two',
+    );
   });
 
   test('timing uses successful rolling average and clamps remaining', () async {

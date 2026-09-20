@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../data/processing_repository.dart';
 import '../domain/page_analysis.dart';
+import '../domain/region_edits.dart';
 
 enum ProcessingStatus { initial, processing, success, failure }
 
@@ -12,6 +13,7 @@ class ProcessingController extends ChangeNotifier {
   Uint8List? imageBytes;
   String? filename;
   PageAnalysis? analysis;
+  PageEdits edits = PageEdits();
   String? error;
   ProcessingStatus status = ProcessingStatus.initial;
   String? selectedRegionId;
@@ -37,6 +39,7 @@ class ProcessingController extends ChangeNotifier {
     filename = name;
     imageBytes = bytes;
     analysis = null;
+    edits = PageEdits();
     selectedRegionId = null;
     error = null;
     status = ProcessingStatus.initial;
@@ -61,12 +64,36 @@ class ProcessingController extends ChangeNotifier {
       final result = await repository.analyze(name, bytes);
       if (version != _selectionVersion) return;
       analysis = result;
+      edits = PageEdits();
       status = ProcessingStatus.success;
     } catch (exception) {
       if (version != _selectionVersion) return;
       error = exception.toString();
       status = ProcessingStatus.failure;
     }
+    notifyListeners();
+  }
+
+  void setTranslation(String id, String? text) {
+    if (analysis?.regions.any((region) => region.id == id) != true) return;
+    edits.setTranslation(id, text);
+    notifyListeners();
+  }
+
+  String? setBox(String id, RegionBox box) {
+    final result = analysis;
+    if (result == null || !result.regions.any((region) => region.id == id)) {
+      return 'Region is unavailable.';
+    }
+    final error = validateRegionBox(box, result);
+    if (error != null) return error;
+    edits.setBox(id, box);
+    notifyListeners();
+    return null;
+  }
+
+  void resetBox(String id) {
+    edits.setBox(id, null);
     notifyListeners();
   }
 }

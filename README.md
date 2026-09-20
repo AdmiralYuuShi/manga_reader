@@ -31,4 +31,24 @@ Chapter elapsed time covers each processing run and stops when that run ends.
 Milestone 7 was intentionally prioritized before editing (M5) and persistence
 (M6) to establish Chapter → Page → Region first.
 
+## Translation and text-box editing (Milestone 5)
+
+Select a detected region in Open Image or Open Chapter mode to edit its
+Indonesian translation. Changes appear in the overlay as you type. The original
+machine translation and Japanese OCR text remain visible and unchanged. An
+empty translation is a valid edit that hides overlay text; **Reset Translation**
+restores the machine result.
+
+The editor also accepts integer X, Y, Width, and Height values in original-image
+pixels. **Apply Box** validates positive dimensions and image bounds before
+using the box as the translation overlay's base. M4 font fitting and local
+expansion still apply to that base. **Detection Boxes** continue to show the
+original detector rectangle. **Reset Box** restores the detector geometry
+without changing the translation edit. Mouse drag and resize are not available.
+
+Edits belong to their page and region and last only for the current app session.
+Opening a new image/chapter clears the previous state. A successful reanalysis
+of a single page replaces its generated result and clears that page's edits.
+Persistence is planned for M6.
+
 The app checks `GET /api/v1/health` on launch. Use the refresh icon after starting the backend. Select a JPEG, PNG, or WebP image with **Open Image**, then select **Analyze Page** to detect regions, run OCR, and translate Japanese to Indonesian. Milestone 4 displays translations over their detected regions. **Translation Overlay** and **Detection Boxes** can be toggled independently without another backend request. Select a region to inspect its Japanese and Indonesian text or a per-region error. Long translations first try progressively expanding the overlay up to 50% beyond the original detector box, within the displayed image and away from neighboring detector boxes. Ellipsis at the minimum font size is the last resort; very small regions remain selectable without overlay text. Detection boxes continue to show the original coordinates. The overlay only covers the original Japanese pixels visually; text removal and inpainting are later work. The backend URL defaults to `http://127.0.0.1:8000`; override it with `flutter run -d windows --dart-define=BACKEND_URL=http://127.0.0.1:9000` if needed. The analysis timeout defaults to 900 seconds and can be set with `--dart-define=ANALYSIS_TIMEOUT_SECONDS=1200`. The default MyMemory translator requires internet access.

@@ -5,6 +5,7 @@ import 'core/api/api_client.dart';
 import 'features/chapter/chapter_controller.dart';
 import 'features/manga_processing/data/processing_repository.dart';
 import 'features/manga_processing/presentation/processing_controller.dart';
+import 'features/manga_processing/presentation/region_editor.dart';
 import 'features/manga_processing/presentation/region_geometry.dart';
 import 'features/manga_processing/presentation/translation_region_overlay.dart';
 
@@ -216,6 +217,9 @@ class _HomePageState extends State<HomePage> {
           dense: true,
           leading: Icon(icon, size: 18),
           title: Text(page.name, overflow: TextOverflow.ellipsis),
+          trailing: page.edits.hasEdits
+              ? const Icon(Icons.edit, size: 16)
+              : null,
           subtitle: page.duration == null
               ? null
               : Text(formatDuration(page.duration!)),
@@ -287,6 +291,16 @@ class _HomePageState extends State<HomePage> {
                   onPressed: _openChapter,
                   child: const Text('Open Chapter'),
                 ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: () {
+                    setState(() {
+                      _chapter.selectedRegionId = null;
+                      _controller.selectedRegionId = null;
+                    });
+                  },
+                  child: const Text('Close Editor'),
+                ),
                 const SizedBox(width: 16),
                 FutureBuilder<HealthResponse>(
                   future: _health,
@@ -357,6 +371,9 @@ class _HomePageState extends State<HomePage> {
                                   final analysis = _chapterMode
                                       ? _chapter.analysis
                                       : _controller.analysis;
+                                  final edits = _chapterMode
+                                      ? _chapter.selectedPage!.edits
+                                      : _controller.edits;
                                   final imageSize = analysis == null
                                       ? null
                                       : Size(
@@ -411,6 +428,18 @@ class _HomePageState extends State<HomePage> {
                                           TranslationRegionOverlay(
                                             region: analysis.regions[index],
                                             rect: detectorRects[index],
+                                            translationRect: displayRectForBox(
+                                              edits.effectiveBox(
+                                                analysis.regions[index],
+                                              ),
+                                              imageSize!,
+                                              canvasSize,
+                                            ),
+                                            editedTranslatedText: edits
+                                                .forRegion(
+                                                  analysis.regions[index].id,
+                                                )
+                                                .translatedText,
                                             imageRect: imageRect!,
                                             obstacles: [
                                               for (
@@ -451,40 +480,26 @@ class _HomePageState extends State<HomePage> {
                         ? _chapter.selectedRegion
                         : _controller.selectedRegion)
                     case final region?)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.surfaceContainerHighest,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text('Selected Region: ${region.id}'),
-                        const Text('Japanese:'),
-                        Text(
-                          region.errorCode != null
-                              ? 'OCR failed for this region (${region.errorCode})'
-                              : region.sourceText?.isNotEmpty == true
-                              ? region.sourceText!
-                              : 'No text recognized',
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          region.targetLanguage == 'id'
-                              ? 'Indonesian:'
-                              : 'Translation (${region.targetLanguage ?? 'id'}):',
-                        ),
-                        Text(
-                          region.translationErrorCode != null
-                              ? 'Translation failed for this region (${region.translationErrorCode})'
-                              : region.translatedText?.isNotEmpty == true
-                              ? region.translatedText!
-                              : 'No translation available',
-                        ),
-                      ],
+                  RegionEditor(
+                    key: ValueKey(
+                      '${_chapterMode ? '${_chapter.directoryPath}:${_chapter.selectedPageIndex}' : _controller.filename}:${region.id}',
                     ),
+                    region: region,
+                    analysis: _chapterMode
+                        ? _chapter.analysis!
+                        : _controller.analysis!,
+                    edits: _chapterMode
+                        ? _chapter.selectedPage!.edits
+                        : _controller.edits,
+                    onTranslation: (text) => _chapterMode
+                        ? _chapter.setTranslation(region.id, text)
+                        : _controller.setTranslation(region.id, text),
+                    onBox: (box) => _chapterMode
+                        ? _chapter.setBox(region.id, box)
+                        : _controller.setBox(region.id, box),
+                    onResetBox: () => _chapterMode
+                        ? _chapter.resetBox(region.id)
+                        : _controller.resetBox(region.id),
                   ),
               ],
             ),
