@@ -1,5 +1,12 @@
 # Backend setup (Windows PowerShell)
 
+For M15 stage timing logs, the measured CPU baseline, and a repeatable
+before/after benchmark procedure, see [PERFORMANCE.md](PERFORMANCE.md).
+CUDA-capable PyTorch is an optional separate installation after the regular
+requirements; see the Phase B section there. `MANGA_DEVICE=auto` selects CUDA
+when available and otherwise uses CPU. Set `MANGA_DEVICE=cpu` for a CPU
+comparison or `MANGA_DEVICE=cuda` to require CUDA explicitly.
+
 From the `backend` directory, create the environment and install dependencies:
 
 ```powershell

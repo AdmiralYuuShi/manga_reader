@@ -5,6 +5,7 @@ from pathlib import Path
 from PIL import Image
 
 from app.services.detection.base import DetectedRegion, TextDetector
+from app.services.device import resolve_device
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ def normalize_box(xyxy: list[int], width: int, height: int) -> DetectedRegion | 
 
 
 class ComicTextDetector(TextDetector):
-    def __init__(self, source: Path, model_path: Path) -> None:
+    def __init__(self, source: Path, model_path: Path, device: str = "auto") -> None:
         if not (source / "inference.py").is_file():
             raise FileNotFoundError(f"Detector source missing: {source}")
         if not model_path.is_file():
@@ -31,11 +32,14 @@ class ComicTextDetector(TextDetector):
         import torch
         from inference import TextDetector as UpstreamTextDetector
 
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = resolve_device(device, torch.cuda.is_available())
         logger.info("Loading comic-text-detector on %s from %s", self.device, model_path)
         self._model = UpstreamTextDetector(
             model_path=str(model_path), input_size=1024, device=self.device, act="leaky"
         )
+        model_devices = {parameter.device.type for parameter in self._model.net.parameters()}
+        if model_devices != {self.device}:
+            raise RuntimeError(f"Detector parameter placement mismatch: {model_devices}")
         logger.info("comic-text-detector ready")
 
     def detect(self, image: Image.Image) -> list[DetectedRegion]:

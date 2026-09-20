@@ -8,6 +8,7 @@ from deep_translator import GoogleTranslator
 from deep_translator.exceptions import TooManyRequests
 
 from app.services.translation.base import TranslationItem
+from app.services.performance import current_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,15 @@ class GoogleTranslationService:
             if remaining > 0:
                 time.sleep(remaining)
             self._next_request_at = time.monotonic() + self.request_interval
-        result = GoogleTranslator(source=source_language, target=target_language).translate(text)
+        metrics = current_metrics.get()
+        started = time.perf_counter()
+        if metrics is not None:
+            metrics.count("translation_requests")
+        try:
+            result = GoogleTranslator(source=source_language, target=target_language).translate(text)
+        finally:
+            if metrics is not None:
+                metrics.add_detail("provider_request_time", time.perf_counter() - started)
         if not isinstance(result, str):
             raise ValueError("Translation provider returned no text")
         return result

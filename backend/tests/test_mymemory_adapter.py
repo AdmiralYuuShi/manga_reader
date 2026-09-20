@@ -7,6 +7,7 @@ from app.services.translation.base import TranslationItem
 from app.services.translation.factory import create_translator
 from app.services.translation.google import GoogleTranslationService
 from app.services.translation.mymemory import MyMemoryTranslator
+from app.services.performance import PerformanceMetrics, current_metrics
 
 
 def test_single_translation_maps_application_languages(monkeypatch):
@@ -40,13 +41,20 @@ def test_order_partial_failure_and_empty_text(monkeypatch):
             return f"translated {text}"
 
     monkeypatch.setattr("app.services.translation.mymemory.DeepMyMemoryTranslator", FakeProvider)
-    result = MyMemoryTranslator().translate_batch(
-        ["first", "", "bad", "  ", "last"], "ja", "id"
-    )
+    metrics = PerformanceMetrics()
+    token = current_metrics.set(metrics)
+    try:
+        result = MyMemoryTranslator().translate_batch(
+            ["first", "", "bad", "  ", "last"], "ja", "id"
+        )
+    finally:
+        current_metrics.reset(token)
     assert result == [TranslationItem("translated first"), TranslationItem(),
                       TranslationItem(error_code="TRANSLATION_FAILED"), TranslationItem(),
                       TranslationItem("translated last")]
     assert calls == [("ja-JP", "id-ID"), "first", "bad", "last"]
+    assert metrics.counts["translation_requests"] == 3
+    assert metrics.details["provider_request_time"] >= 0
 
 
 def test_unsupported_language_fails_without_provider_request(monkeypatch):

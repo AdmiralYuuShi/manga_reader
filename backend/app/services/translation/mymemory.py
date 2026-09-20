@@ -1,11 +1,13 @@
 """MyMemory translation with application-to-provider language mapping."""
 
 import logging
+from time import perf_counter
 
 from deep_translator import MyMemoryTranslator as DeepMyMemoryTranslator
 from deep_translator.constants import MY_MEMORY_LANGUAGES_TO_CODES
 
 from app.services.translation.base import TranslationItem
+from app.services.performance import current_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +51,10 @@ class MyMemoryTranslator:
                 results.append(TranslationItem())
                 continue
             try:
+                metrics = current_metrics.get()
+                started = perf_counter()
+                if metrics is not None:
+                    metrics.count("translation_requests")
                 translated = provider.translate(text)
                 if not isinstance(translated, str) or not translated.strip():
                     raise ValueError("MyMemory returned no translation")
@@ -58,5 +64,8 @@ class MyMemoryTranslator:
                 logger.warning("MyMemory translation %d/%d failed: %s", index, len(texts),
                                type(exc).__name__)
                 results.append(TranslationItem(error_code="TRANSLATION_FAILED"))
+            finally:
+                if metrics is not None:
+                    metrics.add_detail("provider_request_time", perf_counter() - started)
         logger.info("Translation completed: %d/%d", successes, len(texts))
         return results
