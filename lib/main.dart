@@ -6,6 +6,7 @@ import 'app/app_theme.dart';
 import 'core/api/api_client.dart';
 import 'features/chapter/chapter_controller.dart';
 import 'features/chapter/chapter_persistence.dart';
+import 'features/chapter/source_hierarchy.dart';
 import 'features/manga_processing/data/processing_repository.dart';
 import 'features/manga_processing/presentation/processing_controller.dart';
 import 'features/manga_processing/presentation/manga_viewer_workspace.dart';
@@ -47,12 +48,14 @@ class HomePage extends StatefulWidget {
     this.controller,
     this.chapterController,
     this.preferences,
+    this.sourceHierarchy,
   });
 
   final ApiClient? apiClient;
   final ProcessingController? controller;
   final ChapterController? chapterController;
   final AppPreferences? preferences;
+  final SourceHierarchy? sourceHierarchy;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -71,6 +74,8 @@ class _HomePageState extends State<HomePage> {
   late final AppPreferences _preferences =
       widget.preferences ?? AppPreferences();
   late bool _chapterMode = _chapter.directoryPath != null;
+  late SourceHierarchy? _hierarchy = widget.sourceHierarchy;
+  bool _switchingChapter = false;
   bool _showTranslationOverlay = true;
   bool _showDetectionBoxes = true;
 
@@ -175,7 +180,10 @@ class _HomePageState extends State<HomePage> {
       final selected = await openFile(acceptedTypeGroups: [images]);
       if (selected != null) {
         await _chapter.stopAndWait();
-        setState(() => _chapterMode = false);
+        setState(() {
+          _chapterMode = false;
+          _hierarchy = null;
+        });
         if (widget.controller == null) {
           _controller.persistence ??= ChapterPersistenceRepository(
             await getApplicationSupportDirectory(),
@@ -200,13 +208,21 @@ class _HomePageState extends State<HomePage> {
       final path = await getDirectoryPath(confirmButtonText: 'Open Chapter');
       if (path == null) return;
       await _controller.flushSaves();
+      final hierarchy = await SourceHierarchy.discover(path);
       if (widget.chapterController == null) {
         _chapter.persistence ??= ChapterPersistenceRepository(
           await getApplicationSupportDirectory(),
         );
       }
-      await _chapter.open(path);
-      if (mounted) setState(() => _chapterMode = true);
+      await _chapter.open(
+        hierarchy.chapters.isEmpty ? path : hierarchy.chapters.first.path,
+      );
+      if (mounted) {
+        setState(() {
+          _chapterMode = true;
+          _hierarchy = hierarchy;
+        });
+      }
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -214,6 +230,38 @@ class _HomePageState extends State<HomePage> {
         );
       }
     }
+  }
+
+  Future<void> _selectChapter(SourceFolder folder) async {
+    if (_switchingChapter || folder.path == _chapter.directoryPath) return;
+    setState(() => _switchingChapter = true);
+    try {
+      await _chapter.open(folder.path);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open chapter: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _switchingChapter = false);
+    }
+  }
+
+  List<(SourceFolder, int)> get _folderEntries {
+    final entries = <(SourceFolder, int)>[];
+    void visit(SourceFolder folder, int depth) {
+      if (folder.isChapter || depth > 0) {
+        entries.add((folder, depth));
+      }
+      for (final child in folder.children) {
+        visit(child, depth + 1);
+      }
+    }
+
+    final root = _hierarchy?.root;
+    if (root != null) visit(root, 0);
+    return entries;
   }
 
   @override
@@ -306,6 +354,11 @@ class _HomePageState extends State<HomePage> {
 
   Widget _navigationPanel(double width) {
     final colors = Theme.of(context).colorScheme;
+    final entries = _folderEntries;
+    final showFolders =
+        _hierarchy != null &&
+        (_hierarchy!.chapters.length > 1 ||
+            _hierarchy!.root.children.isNotEmpty);
     return SizedBox(
       width: width,
       child: ColoredBox(
@@ -313,6 +366,59 @@ class _HomePageState extends State<HomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (showFolders) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+                child: Text(
+                  'Folders',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+              ),
+              SizedBox(
+                height: 210,
+                child: ListView.builder(
+                  key: const ValueKey('chapter-folder-list'),
+                  itemCount: entries.length,
+                  itemBuilder: (context, index) {
+                    final (folder, depth) = entries[index];
+                    final active =
+                        folder.isChapter &&
+                        folder.path == _chapter.directoryPath;
+                    return Tooltip(
+                      message: folder.relativePath.isEmpty
+                          ? folder.name
+                          : folder.relativePath,
+                      child: ListTile(
+                        key: ValueKey('chapter-folder-${folder.relativePath}'),
+                        dense: true,
+                        visualDensity: VisualDensity.compact,
+                        contentPadding: EdgeInsets.only(
+                          left: 8.0 + depth * 12,
+                          right: 4,
+                        ),
+                        leading: Icon(
+                          folder.isChapter
+                              ? Icons.folder_open_outlined
+                              : Icons.folder_outlined,
+                          size: 18,
+                        ),
+                        title: Text(
+                          folder.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        selected: active,
+                        selectedTileColor: colors.primaryContainer,
+                        onTap: folder.isChapter && !_switchingChapter
+                            ? () => _selectChapter(folder)
+                            : null,
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const Divider(height: 1),
+            ],
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
               child: Text(
@@ -378,6 +484,40 @@ class _HomePageState extends State<HomePage> {
       child: Row(
         children: [
           if (_chapterMode) ...[
+            if (_hierarchy != null && _hierarchy!.chapters.length > 1)
+              PopupMenuButton<SourceFolder>(
+                tooltip: 'Choose Chapter',
+                enabled: !_switchingChapter,
+                onSelected: _selectChapter,
+                itemBuilder: (context) => [
+                  for (final folder in _hierarchy!.chapters)
+                    PopupMenuItem(
+                      value: folder,
+                      child: Text(
+                        folder.relativePath.isEmpty
+                            ? folder.name
+                            : folder.relativePath,
+                      ),
+                    ),
+                ],
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 150),
+                        child: Text(
+                          _chapter.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const Icon(Icons.arrow_drop_down),
+                    ],
+                  ),
+                ),
+              ),
             IconButton(
               onPressed: _chapter.selectedPageIndex > 0
                   ? () => _chapter.selectPage(_chapter.selectedPageIndex - 1)
@@ -567,9 +707,15 @@ class _HomePageState extends State<HomePage> {
       ),
     );
     if (_chapterMode) {
+      if (_hierarchy != null && _hierarchy!.chapters.length > 1) {
+        add('Chapter: ${_chapter.name}');
+      }
       add(
         '${_chapter.completedCount} completed / ${_chapter.pages.length} pages',
       );
+      if (_hierarchy?.skippedFolders case final skipped? when skipped > 0) {
+        add('$skipped inaccessible or linked folders skipped', error: true);
+      }
       if (_chapter.processing) {
         add(
           'Processing page ${_chapter.currentPageIndex + 1} / ${_chapter.pages.length}',

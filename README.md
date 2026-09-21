@@ -99,8 +99,9 @@ image/chapter data is unchanged.
 
 ## Chapter processing (Milestone 7)
 
-**Open Chapter** selects a folder. Direct child JPEG, PNG, and WebP files are
-shown in natural filename order; unrelated files are ignored. **Process Chapter**
+**Open Chapter** selects a source folder. A simple chapter's direct child JPEG,
+PNG, and WebP files are shown in natural filename order; unrelated files are
+ignored. **Process Chapter**
 sends pending pages one at a time to the existing page analysis endpoint. The
 page list shows pending, processing, completed, and failed states. Completed
 pages can be inspected immediately with the existing translation overlay,
@@ -118,6 +119,45 @@ durations show completed runs. Estimates use the last five successful page
 durations (or fewer when fewer exist); failed pages are excluded.
 Milestone 7 was intentionally prioritized before editing (M5) and persistence
 (M6) to establish Chapter → Page → Region first.
+
+## Recursive source folders (Milestone 13)
+
+**Open Chapter** also accepts a manga root containing nested folders. Each
+directory with direct JPG/JPEG/PNG/WebP files is its own chapter; its direct
+images are its pages. A directory without direct images is a container when it
+leads to chapters. Empty/unrelated folders are omitted. For a mixed folder,
+its direct pages form that folder's chapter while child chapters stay separate.
+For example, `Manga/Volume 1/Chapter 1/1.jpg` and
+`Manga/Volume 2/Chapter 1/1.jpg` remain different chapters. Sibling folders
+and pages use case-insensitive natural order (`1`, `2`, `10`); extensions are
+case-insensitive.
+
+The left reader panel shows folder groups and chapters above the active
+chapter's page list. The toolbar has a chapter picker for narrow windows.
+Selecting another chapter clears region selection and loads that folder's
+existing M6 cache. **Process Chapter**, Retry, and Stop remain scoped to the
+active chapter; opening a root never processes every descendant automatically.
+The selected hierarchy exists only in the current session, with no saved
+library of roots.
+
+M6 still stores each chapter by its normalized absolute directory path, so
+previously processed simple chapters retain their cache and identically named
+chapters under different volumes do not collide. Renaming or moving a source
+folder changes that identity; M13 does not migrate the old cache. Discovery
+uses names and filesystem metadata, skips links/junctions and unreadable nested
+folders, and does not decode or hash every image. A missing/inaccessible
+selected root is reported as an import error. Files disappearing later may
+appear as page processing errors.
+
+Manual Windows check: reopen an existing simple chapter and confirm page
+order, cached OCR/translation, and edits; edit text and geometry and reopen.
+Open a root with Chapters 1, 2, and 10, then a Volume → Chapter tree with
+duplicate chapter names, and check ordering, separate caches, chapter/page
+selection, and cleared region selection. Process one active chapter and confirm
+others stay pending. Test a mixed folder, empty/unrelated folders, uppercase
+extensions, a removed nested folder, and a larger root. Verify M11 move/resize
+in two chapters, M16 font and M17 appearance across switches, unchanged image
+pixels, and the single-image workflow.
 
 ## Translation and text-box editing (Milestone 5)
 

@@ -1922,10 +1922,10 @@ M0 → M1 → M2 → M3 → M4 → M7 → M5 → M6
    → M11 → M15 → M12 → M16 → M17 → M13 → M14 → V1 Release
 ```
 
-Current milestone: **M17 — Light / Dark Mode (IMPLEMENTED; AWAITING MANUAL WINDOWS VALIDATION)**.
-M12 and M16 are complete following successful manual validation. M15 Phase A
-profiling and Phase B GPU enablement are complete. M13 follows M17 manual
-validation; M13 and M14 remain PLANNED.
+Current milestone: **M13 — Recursive Folder / Subfolder Processing (IMPLEMENTED; AWAITING MANUAL WINDOWS VALIDATION)**.
+M12, M16, and M17 are complete following successful manual validation. M15
+Phase A profiling and Phase B GPU enablement are complete. M14 follows M13
+manual validation and remains PLANNED.
 
 ### M11 — Interactive Text Box Move & Resize (COMPLETE)
 
@@ -2010,16 +2010,26 @@ file without entering chapter metadata; old font-only preferences remain valid.
 The existing Settings dialog changes appearance live. M12 chrome uses semantic
 theme colors, while manga image rendering and fixed overlay/handle colors are
 unchanged. See `README.md` for the manual Windows checklist. Automated Flutter
-analysis, tests, and Windows build pass; manual validation remains before M17
-is COMPLETE.
+analysis, tests, and Windows build pass. The user completed M17 manual
+validation successfully.
 
-### M13 — Recursive Folder / Subfolder Processing (PLANNED)
+### M13 — Recursive Folder / Subfolder Processing (IMPLEMENTED; AWAITING MANUAL WINDOWS VALIDATION)
 
 Extend direct-child chapter import to nested source folders while preserving
 meaningful Folder/Manga Root → Chapter/Subfolder → Page → Region hierarchy.
 Do not flatten all images into one chapter. Discover folders safely, retain
 natural order within each chapter, and keep M6 persistence compatible. Define
 detailed hierarchy behavior in the M13 task.
+
+Directories with direct supported images are chapters; directories with only
+descendant chapters are groups. Mixed folders retain their own direct-page
+chapter plus child chapters. Discovery is link-safe and naturally ordered.
+The reader navigates the source tree while `ChapterController` processes only
+the selected chapter. M6's absolute-directory chapter identity and schema are
+unchanged, preserving old simple-chapter caches and separating duplicate leaf
+names. See `README.md` for behavior, limitations, and the manual checklist.
+Automated Flutter analysis, tests, and Windows build pass; manual Windows
+validation remains before M13 is COMPLETE.
 
 ### M14 — Translation Library / Tree View (PLANNED; final major V1 feature)
 

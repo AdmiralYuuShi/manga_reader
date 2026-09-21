@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:manga_translator/core/api/api_client.dart';
 import 'package:manga_translator/features/chapter/chapter_controller.dart';
+import 'package:manga_translator/features/chapter/source_hierarchy.dart';
 import 'package:manga_translator/features/manga_processing/data/processing_repository.dart';
 import 'package:manga_translator/features/manga_processing/domain/page_analysis.dart';
 import 'package:manga_translator/features/manga_processing/presentation/manga_viewer_workspace.dart';
@@ -238,6 +239,86 @@ void main() {
       imageCache.clearLiveImages();
       preferences.dispose();
       await tester.runAsync(() => directory.delete(recursive: true));
+    },
+  );
+
+  testWidgets(
+    'hierarchical navigation switches active chapter and clears region selection',
+    (tester) async {
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1;
+      final root = await tester.runAsync(
+        () => Directory.systemTemp.createTemp('reader_tree_'),
+      );
+      for (final name in ['Chapter 1', 'Chapter 2']) {
+        await tester.runAsync(() async {
+          final file = File(
+            '${root!.path}${Platform.pathSeparator}$name${Platform.pathSeparator}1.png',
+          );
+          await file.parent.create(recursive: true);
+          await file.writeAsBytes([1]);
+        });
+      }
+      final hierarchy = (await tester.runAsync(
+        () => SourceHierarchy.discover(root!.path),
+      ))!;
+      final chapter = (await tester.runAsync(() async {
+        final value = ChapterController(IdleRepository());
+        await value.open(hierarchy.chapters.first.path);
+        return value;
+      }))!;
+      await tester.runAsync(
+        () => File(chapter.pages.single.file.path).delete(),
+      );
+      chapter.pages.single
+        ..status = ChapterPageStatus.completed
+        ..analysis = analysis;
+      chapter.selectRegion('region');
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomePage(
+            chapterController: chapter,
+            sourceHierarchy: hierarchy,
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.byKey(const ValueKey('chapter-folder-list')), findsOneWidget);
+      expect(find.text('Selected Region: region'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('chapter-folder-Chapter 2')));
+      await tester.runAsync(() async {
+        for (
+          var attempt = 0;
+          attempt < 50 && chapter.directoryPath != hierarchy.chapters.last.path;
+          attempt++
+        ) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+        if (chapter.directoryPath == hierarchy.chapters.last.path) {
+          await chapter.pages.single.file.delete();
+        }
+      });
+      await tester.pump();
+      expect(chapter.directoryPath, hierarchy.chapters.last.path);
+      expect(chapter.selectedRegionId, isNull);
+      expect(chapter.pages.single.name, '1.png');
+      expect(chapter.pages.single.status, ChapterPageStatus.pending);
+      expect(tester.takeException(), isNull);
+      tester.view.physicalSize = const Size(620, 700);
+      await tester.pump();
+      expect(find.byTooltip('Choose Chapter'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      chapter.dispose();
+      imageCache.clear();
+      imageCache.clearLiveImages();
+      // Windows may briefly retain an image handle after the widget is removed.
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        await root!.delete(recursive: true);
+      });
     },
   );
 }
