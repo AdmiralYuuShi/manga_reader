@@ -7,6 +7,9 @@ import 'core/api/api_client.dart';
 import 'features/chapter/chapter_controller.dart';
 import 'features/chapter/chapter_persistence.dart';
 import 'features/chapter/source_hierarchy.dart';
+import 'features/library/library_controller.dart';
+import 'features/library/library_model.dart';
+import 'features/library/library_view.dart';
 import 'features/manga_processing/data/processing_repository.dart';
 import 'features/manga_processing/presentation/processing_controller.dart';
 import 'features/manga_processing/presentation/manga_viewer_workspace.dart';
@@ -49,6 +52,7 @@ class HomePage extends StatefulWidget {
     this.chapterController,
     this.preferences,
     this.sourceHierarchy,
+    this.libraryController,
   });
 
   final ApiClient? apiClient;
@@ -56,6 +60,7 @@ class HomePage extends StatefulWidget {
   final ChapterController? chapterController;
   final AppPreferences? preferences;
   final SourceHierarchy? sourceHierarchy;
+  final LibraryController? libraryController;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -73,8 +78,11 @@ class _HomePageState extends State<HomePage> {
       widget.chapterController ?? ChapterController(_controller.repository);
   late final AppPreferences _preferences =
       widget.preferences ?? AppPreferences();
+  late final LibraryController _library =
+      widget.libraryController ?? LibraryController();
   late bool _chapterMode = _chapter.directoryPath != null;
   late SourceHierarchy? _hierarchy = widget.sourceHierarchy;
+  bool _libraryMode = false;
   bool _switchingChapter = false;
   bool _showTranslationOverlay = true;
   bool _showDetectionBoxes = true;
@@ -83,6 +91,7 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     if (widget.preferences == null) _preferences.load();
+    _library.load();
   }
 
   Future<void> _showSettings() => showDialog<void>(
@@ -183,6 +192,7 @@ class _HomePageState extends State<HomePage> {
         setState(() {
           _chapterMode = false;
           _hierarchy = null;
+          _libraryMode = false;
         });
         if (widget.controller == null) {
           _controller.persistence ??= ChapterPersistenceRepository(
@@ -207,26 +217,102 @@ class _HomePageState extends State<HomePage> {
     try {
       final path = await getDirectoryPath(confirmButtonText: 'Open Chapter');
       if (path == null) return;
-      await _controller.flushSaves();
-      final hierarchy = await SourceHierarchy.discover(path);
-      if (widget.chapterController == null) {
-        _chapter.persistence ??= ChapterPersistenceRepository(
-          await getApplicationSupportDirectory(),
-        );
-      }
-      await _chapter.open(
-        hierarchy.chapters.isEmpty ? path : hierarchy.chapters.first.path,
-      );
-      if (mounted) {
-        setState(() {
-          _chapterMode = true;
-          _hierarchy = hierarchy;
-        });
-      }
+      await _openChapterPath(path);
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Could not open chapter: $error')),
+        );
+      }
+    }
+  }
+
+  Future<void> _openChapterPath(
+    String path, {
+    String? chapterRelativePath,
+    String? pageName,
+  }) async {
+    await _controller.flushSaves();
+    final hierarchy = await SourceHierarchy.discover(path);
+    if (hierarchy.chapters.isEmpty) {
+      throw StateError(
+        'No supported chapter images were found in this folder.',
+      );
+    }
+    final folder = chapterRelativePath == null
+        ? hierarchy.chapters.first
+        : hierarchy.chapters.firstWhere(
+            (candidate) => candidate.relativePath == chapterRelativePath,
+            orElse: () => throw StateError(
+              'The selected chapter is no longer in this folder. Refresh the library.',
+            ),
+          );
+    if (pageName != null && !folder.pageNames.contains(pageName)) {
+      throw StateError(
+        'The selected page is no longer in this chapter. Refresh the library.',
+      );
+    }
+    if (widget.chapterController == null) {
+      _chapter.persistence ??= ChapterPersistenceRepository(
+        await getApplicationSupportDirectory(),
+      );
+    }
+    await _chapter.open(folder.path);
+    if (pageName != null) {
+      final index = _chapter.pages.indexWhere((page) => page.name == pageName);
+      if (index < 0) {
+        throw StateError('The selected page is no longer available.');
+      }
+      _chapter.selectPage(index);
+    }
+    if (mounted) {
+      setState(() {
+        _chapterMode = true;
+        _libraryMode = false;
+        _hierarchy = hierarchy;
+      });
+    }
+    try {
+      final root = await _library.register(hierarchy);
+      _library.refresh(root.id, discovered: hierarchy);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Chapter opened, but library registration failed: $error',
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _enterLibrary() async {
+    await _chapter.flushSaves();
+    if (!mounted) return;
+    setState(() => _libraryMode = true);
+    final root = _hierarchy?.root;
+    if (root != null) {
+      _library.refresh(chapterStorageId(root.path));
+    }
+  }
+
+  Future<void> _openLibraryRoot(
+    LibraryRoot root, {
+    LibraryFolder? folder,
+    String? pageName,
+  }) async {
+    try {
+      await _openChapterPath(
+        root.path,
+        chapterRelativePath: folder?.relativePath,
+        pageName: pageName,
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open library item: $error')),
         );
       }
     }
@@ -269,6 +355,7 @@ class _HomePageState extends State<HomePage> {
     if (widget.chapterController == null) _chapter.dispose();
     if (widget.controller == null) _controller.dispose();
     if (widget.preferences == null) _preferences.dispose();
+    if (widget.libraryController == null) _library.dispose();
     super.dispose();
   }
 
@@ -295,7 +382,7 @@ class _HomePageState extends State<HomePage> {
                     label: const Text('Open Chapter'),
                   ),
                   const SizedBox(width: 16),
-                  if (_chapterMode) ...[
+                  if (!_libraryMode && _chapterMode) ...[
                     FilledButton.icon(
                       onPressed:
                           _chapter.processing || _chapter.pendingCount == 0
@@ -327,7 +414,7 @@ class _HomePageState extends State<HomePage> {
                         child: const Text('Retry Page'),
                       ),
                     ],
-                  ] else
+                  ] else if (!_libraryMode)
                     FilledButton.icon(
                       onPressed:
                           _controller.imageBytes == null ||
@@ -337,6 +424,18 @@ class _HomePageState extends State<HomePage> {
                       icon: const Icon(Icons.auto_fix_high),
                       label: const Text('Analyze Page'),
                     ),
+                  const SizedBox(width: 8),
+                  FilledButton.tonalIcon(
+                    onPressed: _libraryMode
+                        ? () => setState(() => _libraryMode = false)
+                        : _enterLibrary,
+                    icon: Icon(
+                      _libraryMode
+                          ? Icons.menu_book_outlined
+                          : Icons.library_books_outlined,
+                    ),
+                    label: Text(_libraryMode ? 'Reader' : 'Library'),
+                  ),
                 ],
               ),
             ),
@@ -699,6 +798,23 @@ class _HomePageState extends State<HomePage> {
 
   Widget _statusBar() {
     final colors = Theme.of(context).colorScheme;
+    if (_libraryMode) {
+      return SizedBox(
+        height: 34,
+        child: ColoredBox(
+          color: colors.surfaceContainerLow,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Text(
+                '${_library.roots.length} library roots · Last indexed statuses update on refresh',
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     final messages = <Widget>[];
     void add(String value, {bool error = false}) => messages.add(
       Text(
@@ -866,7 +982,17 @@ class _HomePageState extends State<HomePage> {
         children: [
           _topActions(),
           const Divider(height: 1),
-          Expanded(child: _workspace()),
+          Expanded(
+            child: _libraryMode
+                ? LibraryView(
+                    controller: _library,
+                    onAddFolder: _openChapter,
+                    onOpenRoot: (root) => _openLibraryRoot(root),
+                    onOpenPage: (root, folder, page) =>
+                        _openLibraryRoot(root, folder: folder, pageName: page),
+                  )
+                : _workspace(),
+          ),
           const Divider(height: 1),
           _statusBar(),
         ],

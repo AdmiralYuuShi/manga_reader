@@ -1922,10 +1922,10 @@ M0 → M1 → M2 → M3 → M4 → M7 → M5 → M6
    → M11 → M15 → M12 → M16 → M17 → M13 → M14 → V1 Release
 ```
 
-Current milestone: **M13 — Recursive Folder / Subfolder Processing (IMPLEMENTED; AWAITING MANUAL WINDOWS VALIDATION)**.
-M12, M16, and M17 are complete following successful manual validation. M15
-Phase A profiling and Phase B GPU enablement are complete. M14 follows M13
-manual validation and remains PLANNED.
+Current milestone: **M14 — Translation Library / Tree View (IMPLEMENTED; AWAITING MANUAL WINDOWS VALIDATION)**.
+M12, M13, M16, and M17 are complete following successful manual validation.
+M15 Phase A profiling and Phase B GPU enablement are complete. V1 stabilization
+and regression testing follow M14 manual validation.
 
 ### M11 — Interactive Text Box Move & Resize (COMPLETE)
 
@@ -2013,7 +2013,7 @@ unchanged. See `README.md` for the manual Windows checklist. Automated Flutter
 analysis, tests, and Windows build pass. The user completed M17 manual
 validation successfully.
 
-### M13 — Recursive Folder / Subfolder Processing (IMPLEMENTED; AWAITING MANUAL WINDOWS VALIDATION)
+### M13 — Recursive Folder / Subfolder Processing (COMPLETE)
 
 Extend direct-child chapter import to nested source folders while preserving
 meaningful Folder/Manga Root → Chapter/Subfolder → Page → Region hierarchy.
@@ -2028,16 +2028,31 @@ The reader navigates the source tree while `ChapterController` processes only
 the selected chapter. M6's absolute-directory chapter identity and schema are
 unchanged, preserving old simple-chapter caches and separating duplicate leaf
 names. See `README.md` for behavior, limitations, and the manual checklist.
-Automated Flutter analysis, tests, and Windows build pass; manual Windows
-validation remains before M13 is COMPLETE.
+Automated Flutter analysis, tests, and Windows build passed. The user completed
+manual Windows validation successfully.
 
-### M14 — Translation Library / Tree View (PLANNED; final major V1 feature)
+### M14 — Translation Library / Tree View (IMPLEMENTED; AWAITING MANUAL WINDOWS VALIDATION)
 
 Provide a persistent tree of known manga roots, chapters, folders, and pages,
 including cached, partially processed, pending, and edited states where actual
 data supports them. Build on M6 persistence, M12 UI structure, and M13 folder
-hierarchy. Design indexing and library behavior in the M14 task; do not
-implement it as a side effect of M12 or M13.
+hierarchy.
+
+The library stores normalized source roots and a dated, lightweight hierarchy
+and status snapshot in versioned `library_index.json` under application-support
+storage. M13 remains authoritative for current files and hierarchy, M6 for
+analysis and edits, and AppPreferences for global settings. Opening a chapter
+registers its root automatically. Refresh rediscovers that root and verifies
+M6 cached pages against source SHA-256 before labeling them Cached or Edited;
+new and stale pages are Pending. Containers derive Partial/Edited status from
+descendant pages. A missing root stays registered as Unavailable. Removing a
+root deletes only its library entry, preserving source files and M6 caches.
+Startup loads the saved index and checks root existence without recursive scans,
+image decoding, or translation requests. Reader navigation and chapter
+processing still use the existing reader and active chapter. See `README.md`
+for behavior, limitations, and the Windows manual checklist. Flutter analysis,
+all 78 automated tests, and the Windows release build pass. M14 is the final
+major V1 feature; it becomes COMPLETE only after manual validation.
 
 ## Version 2 — Image cleanup, lettering, and export
 

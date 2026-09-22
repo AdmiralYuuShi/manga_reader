@@ -137,8 +137,8 @@ chapter's page list. The toolbar has a chapter picker for narrow windows.
 Selecting another chapter clears region selection and loads that folder's
 existing M6 cache. **Process Chapter**, Retry, and Stop remain scoped to the
 active chapter; opening a root never processes every descendant automatically.
-The selected hierarchy exists only in the current session, with no saved
-library of roots.
+The selected reader hierarchy is rediscovered when a root is opened. M14 also
+remembers previously opened roots in the separate Translation Library.
 
 M6 still stores each chapter by its normalized absolute directory path, so
 previously processed simple chapters retain their cache and identically named
@@ -158,6 +158,49 @@ others stay pending. Test a mixed folder, empty/unrelated folders, uppercase
 extensions, a removed nested folder, and a larger root. Verify M11 move/resize
 in two chapters, M16 font and M17 appearance across switches, unchanged image
 pixels, and the single-image workflow.
+
+## Translation Library (Milestone 14)
+
+Use **Library** in the top bar to browse known manga roots. A successful
+**Open Chapter** or **Add / Open Folder** registers the selected M13 root
+automatically. The tree preserves nested folders, mixed folders, natural page
+order, and chapters with duplicate names in different volumes. Expand folders
+and select a page to open that chapter and page in the existing reader. The
+reader's **Process Chapter** still processes only its active chapter.
+
+The versioned `library_index.json` file in application-support storage holds
+normalized root paths and a dated hierarchy/status snapshot. It contains no
+OCR text, translations, edits, or image copies. M13 filesystem discovery is
+authoritative for current hierarchy; M6 chapter cache is authoritative for
+analysis and user edits. **Refresh** rediscovers a root, reconciles added or
+removed pages, and checks SHA-256 only for pages with M6 cached results.
+Pending means no valid cache; Cached means valid saved analysis; Edited means
+valid analysis with saved text or box edits. Partial means some descendant pages
+are pending and others cached. A missing root is kept as Unavailable. Library
+statuses are a snapshot from the last refresh, not live processing progress.
+
+Startup reads the index and checks root existence without recursively scanning
+all roots, decoding pages, hashing uncached pages, or calling the backend.
+**Refresh Library** explicitly updates every root and can take longer on large
+collections. **Remove from Library** removes only the index entry; source files
+and M6 cache stay on disk. Moving or renaming a source root changes its M6 path
+identity; automatic relocation is not supported in V1. If an index file is
+unreadable or has an unsupported schema, it is preserved and the library is
+shown read-only rather than overwritten.
+
+M14 Windows manual validation: launch with an empty library and check its Add
+action; open Manga A, restart, and confirm it remains listed; add Manga B and
+confirm the roots are independent. Expand nested volumes/chapters/pages,
+including mixed folders and natural `1`, `2`, `10` order. Open a page from the
+library and verify the selected reader chapter/page, then return to Library.
+Process one chapter and check its Cached/Partial status after refresh while
+other chapters remain Pending. Edit translation text and box geometry, return
+to Library, and confirm Edited persists after restart. Add and delete source
+chapters/pages externally, refresh, and check reconciliation. Temporarily
+disconnect a root, confirm Unavailable, reconnect and refresh. Remove a root
+and confirm its files and M6 edits remain. Check narrow windows and System,
+Light, and Dark appearance. Verify Open Image and active-chapter processing
+still work, and that Library browsing makes no backend translation request.
 
 ## Translation and text-box editing (Milestone 5)
 
