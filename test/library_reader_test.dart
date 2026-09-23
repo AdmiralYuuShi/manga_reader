@@ -108,7 +108,15 @@ void main() {
     await tester.runAsync(() async {
       await Future<void>.delayed(const Duration(milliseconds: 50));
       await source.delete(recursive: true);
-      await storage.delete(recursive: true);
+      for (var attempt = 0; attempt < 10; attempt++) {
+        try {
+          await storage.delete(recursive: true);
+          break;
+        } on FileSystemException {
+          if (attempt == 9) rethrow;
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+      }
     });
   });
 }

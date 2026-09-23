@@ -56,6 +56,12 @@ class MangaViewerWorkspace extends StatelessWidget {
               for (final region in result.regions)
                 displayRectForRegion(region, imageSize!, canvasSize),
             ];
+      Rect sourceRect(RegionBox box) => Rect.fromLTWH(
+        box.x.toDouble(),
+        box.y.toDouble(),
+        box.width.toDouble(),
+        box.height.toDouble(),
+      );
 
       return Stack(
         children: [
@@ -80,6 +86,15 @@ class MangaViewerWorkspace extends StatelessWidget {
                   imageSize!,
                   canvasSize,
                 ),
+                sourceTranslationRect: sourceRect(
+                  edits.effectiveBox(result.regions[index]),
+                ),
+                sourceImageRect: Offset.zero & imageSize,
+                sourceObstacles: [
+                  for (var other = 0; other < result.regions.length; other++)
+                    if (other != index)
+                      sourceRect(RegionBox.detector(result.regions[other])),
+                ],
                 editedTranslatedText: edits
                     .forRegion(result.regions[index].id)
                     .translatedText,

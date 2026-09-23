@@ -2,6 +2,35 @@
 
 The Windows Flutter app connects to a local FastAPI backend for manga text detection, Japanese OCR, and Indonesian translation.
 
+All planned major V1 features are implemented. M14 manual Windows validation
+passed without issues or regressions. The project is now in **V1 Stabilization /
+Regression Testing** before a V1 Release Candidate and V1.0.
+
+### V1 stabilization: translated overlay fitting
+
+Undersized detected or edited boxes now grow temporarily to show complete
+translations. The measured layout uses the selected manga font and wraps all
+lines without ellipsis or a height-derived line limit. A bounded search favors
+balanced width and height growth for narrow Japanese source boxes. The M11
+selection box and saved `editedRect` remain the user's effective geometry. An
+exceptionally long translation that cannot fit anywhere inside the image shows
+an explicit Inspector prompt, with the complete text available in the Inspector
+and a tooltip; normal overlays do not scroll.
+
+Manual check: revisit the reported page and confirm “Awalnya, itu berasal dari
+kelemahan hatiku.” includes “hatiku.” on the manga page. Check a very small box,
+then select, shrink, and enlarge it; the text should refit while M11 handles
+stay on the effective box. Edit to longer and shorter text, switch through all
+four bundled fonts, and check regions at image edges and different window
+sizes. Navigate and reopen chapter pages to confirm saved edits remain intact.
+Check System, Light, and Dark appearance and Library navigation. Fitting alone
+must not make a backend OCR or translation request.
+Reopen the narrow `region_008` from the follow-up screenshot: its translated
+overlay should widen instead of forming a tall strip, while the yellow M11 box
+stays at the selected geometry. Try other vertical Japanese regions, short and
+long text, all image edges, and a very narrow M11 resize. Restart and confirm
+that only user edits, not temporary expansion, persist.
+
 ## Run locally
 
 1. Set up and start the backend using [backend/README.md](backend/README.md).
@@ -188,7 +217,8 @@ identity; automatic relocation is not supported in V1. If an index file is
 unreadable or has an unsupported schema, it is preserved and the library is
 shown read-only rather than overwritten.
 
-M14 Windows manual validation: launch with an empty library and check its Add
+M14 Windows manual validation passed without issues or regressions. The
+validation checklist covered: launch with an empty library and check its Add
 action; open Manga A, restart, and confirm it remains listed; add Manga B and
 confirm the roots are independent. Expand nested volumes/chapters/pages,
 including mixed folders and natural `1`, `2`, `10` order. Open a page from the

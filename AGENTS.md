@@ -1915,17 +1915,28 @@ reader-oriented UI, global font and appearance preferences, recursive chapter
 organization, a persistent translated-content library, and reliable cache.
 It does not require a cleaned or typeset scanlation image.
 
-Completed and planned Version 1 execution order:
+Version 1 major feature implementation order:
 
 ```text
 M0 → M1 → M2 → M3 → M4 → M7 → M5 → M6
-   → M11 → M15 → M12 → M16 → M17 → M13 → M14 → V1 Release
+   → M11 → M15 → M12 → M16 → M17 → M13 → M14
 ```
 
-Current milestone: **M14 — Translation Library / Tree View (IMPLEMENTED; AWAITING MANUAL WINDOWS VALIDATION)**.
-M12, M13, M16, and M17 are complete following successful manual validation.
-M15 Phase A profiling and Phase B GPU enablement are complete. V1 stabilization
-and regression testing follow M14 manual validation.
+All planned major V1 features are **FEATURE COMPLETE**. M14 manual Windows
+validation passed without issues or regressions. M15 Phase A profiling and
+Phase B GPU enablement are complete.
+
+Current phase: **V1 Stabilization / Regression Testing — CURRENT**.
+
+```text
+V1 Feature Complete
+↓
+V1 Stabilization / Regression Testing
+↓
+V1 Release Candidate
+↓
+V1.0
+```
 
 ### M11 — Interactive Text Box Move & Resize (COMPLETE)
 
@@ -2031,7 +2042,7 @@ names. See `README.md` for behavior, limitations, and the manual checklist.
 Automated Flutter analysis, tests, and Windows build passed. The user completed
 manual Windows validation successfully.
 
-### M14 — Translation Library / Tree View (IMPLEMENTED; AWAITING MANUAL WINDOWS VALIDATION)
+### M14 — Translation Library / Tree View (COMPLETE)
 
 Provide a persistent tree of known manga roots, chapters, folders, and pages,
 including cached, partially processed, pending, and edited states where actual
@@ -2051,8 +2062,28 @@ Startup loads the saved index and checks root existence without recursive scans,
 image decoding, or translation requests. Reader navigation and chapter
 processing still use the existing reader and active chapter. See `README.md`
 for behavior, limitations, and the Windows manual checklist. Flutter analysis,
-all 78 automated tests, and the Windows release build pass. M14 is the final
-major V1 feature; it becomes COMPLETE only after manual validation.
+all 78 automated tests, and the Windows release build passed. The user completed
+M14 manual Windows validation without issues or regressions. M14 was the final
+planned major V1 feature.
+
+### V1 Stabilization / Regression Testing (CURRENT)
+
+This phase is not a new major feature milestone. Perform comprehensive
+end-to-end testing and regression testing across completed milestones; fix bugs
+and edge cases; make small UX/QoL improvements discovered during testing;
+clean up error messages and documentation; and verify release builds. Advance
+through a V1 Release Candidate before V1.0. Do not start V2 milestones during
+stabilization unless the user intentionally ends the V1 stabilization phase.
+
+Preserve these V1 ownership boundaries:
+
+```text
+M13 / filesystem   → source hierarchy
+M6                 → cached analysis, fingerprints, translations, edits
+M14                → persistent library/index/navigation metadata
+AppPreferences     → global application preferences
+Reader/controllers → live processing/editor state
+```
 
 ## Version 2 — Image cleanup, lettering, and export
 

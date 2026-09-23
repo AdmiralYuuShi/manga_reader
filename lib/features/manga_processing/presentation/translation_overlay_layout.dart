@@ -4,22 +4,18 @@ import 'package:flutter/painting.dart';
 
 const double minimumOverlayFontSize = 9;
 const double maximumOverlayFontSize = 22;
-const double minimumOverlayWidth = 32;
-const double minimumOverlayHeight = 24;
 const double overlayPadding = 4;
 const double overlayExpansionStep = 0.10;
 const double maximumOverlayExpansionFactor = 0.50;
 
 class TranslationOverlayLayout {
-  const TranslationOverlayLayout(
-    this.rect,
-    this.fontSize,
-    this.requiresEllipsis,
-  );
+  const TranslationOverlayLayout(this.rect, this.fontSize, this.cannotFit);
 
   final Rect rect;
   final double fontSize;
-  final bool requiresEllipsis;
+
+  /// Complete text cannot fit anywhere inside the image at the minimum size.
+  final bool cannotFit;
 }
 
 double _growth(double desired, double beforeSpace, double afterSpace) {
@@ -120,10 +116,6 @@ double? fittingOverlayFontSize(
     size >= minimumOverlayFontSize;
     size -= 1
   ) {
-    final maxLines = math.max(
-      1,
-      (available.height / (size * (style.height ?? 1))).floor(),
-    );
     final painter = TextPainter(
       text: TextSpan(
         text: text,
@@ -132,16 +124,60 @@ double? fittingOverlayFontSize(
       textAlign: TextAlign.center,
       textDirection: direction,
       textScaler: textScaler,
-      maxLines: maxLines,
     )..layout(maxWidth: available.width);
     final fits =
-        !painter.didExceedMaxLines &&
-        painter.width <= available.width &&
-        painter.height <= available.height;
+        painter.height <= available.height &&
+        painter.computeLineMetrics().every(
+          (line) => line.width <= available.width + 0.5,
+        );
     painter.dispose();
     if (fits) return size;
   }
   return null;
+}
+
+({double height, int lines, bool fitsWidth}) _measure(
+  String text,
+  double width,
+  TextStyle style,
+  TextDirection direction,
+  TextScaler textScaler,
+) {
+  if (width <= 0) return (height: double.infinity, lines: 0, fitsWidth: false);
+  final painter = TextPainter(
+    text: TextSpan(text: text, style: style),
+    textAlign: TextAlign.center,
+    textDirection: direction,
+    textScaler: textScaler,
+  )..layout(maxWidth: width);
+  final lineMetrics = painter.computeLineMetrics();
+  final overwide = lineMetrics.any((line) => line.width > width + 0.5);
+  final result = (
+    height: painter.height,
+    lines: lineMetrics.length,
+    fitsWidth: !overwide,
+  );
+  painter.dispose();
+  return result;
+}
+
+Rect _expandToSize(Rect base, Rect bounds, double width, double height) {
+  final (left, right) = _splitGrowth(
+    math.max(0, width - base.width),
+    math.max(0, base.left - bounds.left),
+    math.max(0, bounds.right - base.right),
+  );
+  final (top, bottom) = _splitGrowth(
+    math.max(0, height - base.height),
+    math.max(0, base.top - bounds.top),
+    math.max(0, bounds.bottom - base.bottom),
+  );
+  return Rect.fromLTRB(
+    base.left - left,
+    base.top - top,
+    base.right + right,
+    base.bottom + bottom,
+  );
 }
 
 double overlayFontSize(
@@ -161,37 +197,114 @@ TranslationOverlayLayout findTranslationOverlayLayout({
   required TextStyle style,
   required TextDirection direction,
   TextScaler textScaler = TextScaler.noScaling,
+  double displayScale = 1,
 }) {
-  var fallback = detectorRect;
-  for (
-    var step = 0;
-    step <= (maximumOverlayExpansionFactor / overlayExpansionStep).round();
-    step++
-  ) {
-    final candidate = expandRectWithinBounds(
-      detectorRect,
-      imageRect,
-      step * overlayExpansionStep,
-      obstacles,
-    );
-    if (candidate == null) continue;
-    if (candidate.width * candidate.height > fallback.width * fallback.height) {
-      fallback = candidate;
-    }
-    final available = Size(
-      math.max(0, candidate.width - overlayPadding * 2),
-      math.max(0, candidate.height - overlayPadding * 2),
-    );
-    final fontSize = fittingOverlayFontSize(
+  assert(displayScale > 0);
+  // The border can be 2px when selected. Reserve it even when unselected so
+  // selection never causes the final line to be clipped.
+  const inset = overlayPadding + 2;
+  final originalAvailable = Size(
+    math.max(0, detectorRect.width * displayScale - inset * 2),
+    math.max(0, detectorRect.height * displayScale - inset * 2),
+  );
+  final originalFont = fittingOverlayFontSize(
+    text,
+    originalAvailable,
+    style,
+    direction,
+    textScaler: textScaler,
+  );
+  if (originalFont != null) {
+    final originalMeasure = _measure(
       text,
-      available,
-      style,
+      originalAvailable.width,
+      style.copyWith(fontSize: originalFont),
       direction,
-      textScaler: textScaler,
+      textScaler,
     );
-    if (fontSize != null) {
-      return TranslationOverlayLayout(candidate, fontSize, false);
+    // A short translation in a vertical source box should remain compact.
+    // Many wrapped lines in that same box deserve a wider Latin layout.
+    if (originalMeasure.lines <= 3 ||
+        detectorRect.width / detectorRect.height >= 0.6) {
+      return TranslationOverlayLayout(detectorRect, originalFont, false);
     }
   }
-  return TranslationOverlayLayout(fallback, minimumOverlayFontSize, true);
+
+  final baseArea = math.max(1.0, detectorRect.width * detectorRect.height);
+  final targetRatio = math.max(
+    0.7,
+    math.min(2.5, math.sqrt(detectorRect.width / detectorRect.height)),
+  );
+  TranslationOverlayLayout? best;
+  var bestScore = double.infinity;
+  var candidateWidth = detectorRect.width;
+  // Geometric width steps explore balanced growth without a 2D brute-force
+  // search. The final step always tests the full image width.
+  for (var widthStep = 0; widthStep < 13; widthStep++) {
+    if (widthStep == 12) candidateWidth = imageRect.width;
+    final width = math.min(candidateWidth, imageRect.width);
+    final contentWidth = width * displayScale - inset * 2;
+    if (contentWidth > 0) {
+      for (final fontSize in [22.0, 18.0, 15.0, 12.0, 9.0]) {
+        final measured = _measure(
+          text,
+          contentWidth,
+          style.copyWith(fontSize: fontSize),
+          direction,
+          textScaler,
+        );
+        if (!measured.fitsWidth) continue;
+        final desiredHeight = math.max(
+          detectorRect.height,
+          (measured.height + inset * 2 + 1) / displayScale,
+        );
+        if (desiredHeight > imageRect.height + 0.01) continue;
+        final candidate = _expandToSize(
+          detectorRect,
+          imageRect,
+          width,
+          desiredHeight,
+        );
+        final actualWidth = candidate.width * displayScale - inset * 2;
+        final actualHeight = candidate.height * displayScale - inset * 2;
+        if (actualWidth + 0.01 < contentWidth ||
+            actualHeight + 0.01 < measured.height) {
+          continue;
+        }
+        final areaPenalty = math.log(
+          candidate.width * candidate.height / baseArea,
+        );
+        final ratio = candidate.width / candidate.height;
+        final shapePenalty = (math.log(ratio / targetRatio)).abs();
+        final fontPenalty = math.max(0.0, 16 - fontSize) * 0.12;
+        final linePenalty = math.max(0, measured.lines - 4) * 0.04;
+        final score =
+            areaPenalty + shapePenalty * 0.8 + fontPenalty + linePenalty;
+        if (score < bestScore) {
+          bestScore = score;
+          best = TranslationOverlayLayout(candidate, fontSize, false);
+        }
+      }
+    }
+    candidateWidth = math.max(
+      candidateWidth * 1.4,
+      candidateWidth + 12 / displayScale,
+    );
+  }
+  if (best != null) return best;
+  final maxContentWidth = imageRect.width * displayScale - inset * 2;
+  final maxContentHeight = imageRect.height * displayScale - inset * 2;
+  final wholeImageFont = fittingOverlayFontSize(
+    text,
+    Size(maxContentWidth, maxContentHeight),
+    style,
+    direction,
+    textScaler: textScaler,
+  );
+  if (wholeImageFont != null) {
+    return TranslationOverlayLayout(imageRect, wholeImageFont, false);
+  }
+  // Mathematically impossible inside the image: report this explicitly in the
+  // overlay; the Inspector and tooltip retain the complete translation.
+  return TranslationOverlayLayout(imageRect, minimumOverlayFontSize, true);
 }
